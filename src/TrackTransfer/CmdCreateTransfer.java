@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 public class CmdCreateTransfer extends SubCommand {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdCreateTransfer");
+    private String database;    // database being connected to (may be null)
     private String desc;        // description of this delivery
 
     public CmdCreateTransfer() throws AppFatal {
@@ -21,8 +22,6 @@ public class CmdCreateTransfer extends SubCommand {
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
         int key;
-
-        database = "jdbc:h2:./trackTransfer";
         
         LOG.setLevel(null);
         config(args);
@@ -32,10 +31,10 @@ public class CmdCreateTransfer extends SubCommand {
             LOG.setLevel(Level.INFO);
             LOG.info("'New transfer' command line arguments:");
             LOG.info(" Mandatory:");
+            LOG.info("  -db <databaseURL>: URL identifying the database");
             LOG.info("  -desc <description>: text describing this transfer");
             LOG.info("");
             LOG.info(" Optional:");
-            LOG.info("  -db <databaseURL>: URL identifying the database (default 'jdbc:h2:./trackTransfer')");
             LOG.info("  -v: verbose mode: give more details about processing");
             LOG.info("  -d: debug mode: give a lot of details about processing");
             LOG.info("  -help: print this listing");
@@ -44,8 +43,11 @@ public class CmdCreateTransfer extends SubCommand {
         }
 
         // check necessary fields have been specified
+        if (database == null) {
+            throw new AppError("The database must be specified (-db)");
+        }
         if (desc == null) {
-            throw new AppFatal("Transfer description must be specified (-desc)");
+            throw new AppError("Transfer description must be specified (-desc)");
         }
 
         // say what we are doing
@@ -62,7 +64,7 @@ public class CmdCreateTransfer extends SubCommand {
         }
 
         // connect to the database and create the tables
-        connectDB(database);
+        database = connectDB(database);
         try {
             TblTransfer.createTable();
         } catch (SQLException sqe) {
@@ -71,12 +73,12 @@ public class CmdCreateTransfer extends SubCommand {
             }
         }
         TblDelivery.createTable();
-        TblItem.createTable();
+        TblInstance.createTable();
         TblEvent.createTable();
-        TblItemEvent.createTable();
+        TblInstanceEvent.createTable();
+        TblItem.createTable();
         
         key = TblTransfer.add(desc);
-        
         disconnectDB();
 
         // acknowledge creation
@@ -84,9 +86,9 @@ public class CmdCreateTransfer extends SubCommand {
         LOG.log(Level.INFO, " Transfer (key={0})", key);
     }
 
-    public void config(String args[]) throws AppFatal {
-        String usage = "-db <databaseURL> -desc <text>";
-        int i, j;
+    public void config(String args[]) throws AppError {
+        String usage = "-db <databaseURL> -desc <text> [-v] [-d] [-help]";
+        int i;
 
         // process remaining command line arguments
         i = 1;
@@ -127,11 +129,11 @@ public class CmdCreateTransfer extends SubCommand {
 
                     // otherwise check to see if it is a common argument
                     default:
-                        throw new AppFatal("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
+                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
                 }
             }
         } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppFatal("Missing argument. Usage: " + usage);
+            throw new AppError("Missing argument. Usage: " + usage);
         }
     }
 }

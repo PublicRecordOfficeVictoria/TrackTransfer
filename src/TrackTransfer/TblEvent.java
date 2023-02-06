@@ -7,9 +7,6 @@ package TrackTransfer;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.TimeZone;
 import java.util.logging.Logger;
 
 /**
@@ -22,10 +19,12 @@ public class TblEvent extends SQL {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblEvent");
 
+    static final int MAX_DESC_LEN = 100;
+
     static String CREATE_EVENT_TABLE
             = "create table EVENT ("
             + "EVENT_ID integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " // primary key
-            + "DESC varchar(100) NOT NULL,"         // description of event
+            + "DESC varchar(" + MAX_DESC_LEN + ") NOT NULL," // description of event
             + "OCCURRED timestamp(0) with time zone NOT NULL" // date/time of event
             + ")";
 
@@ -37,12 +36,12 @@ public class TblEvent extends SQL {
     public TblEvent() throws SQLException {
         super();
     }
-        
+
     /**
      * Create the table. Only needs to be done once when the database is being
      * created.
-     * 
-     * @throws SQLException 
+     *
+     * @throws SQLException
      */
     public static void createTable() throws SQLException {
         update(CREATE_EVENT_TABLE);
@@ -58,10 +57,14 @@ public class TblEvent extends SQL {
     public static int add(String desc) throws SQLException {
         StringBuilder sb = new StringBuilder();
 
+        assert desc != null;
+
+        desc = truncate("Description", desc, MAX_DESC_LEN);
+
         sb.append("insert into EVENT (DESC, OCCURRED) values ('");
-        sb.append(desc);
+        sb.append(encode(desc));
         sb.append("', '");
-        sb.append(sqlDateTime(0));
+        sb.append(getSQLTimeStamp(0));
         sb.append("');");
         return addSingleRow(sb.toString(), "EVENT_ID");
     }
@@ -73,11 +76,13 @@ public class TblEvent extends SQL {
      *
      * @param what what columns to be returned in the result set
      * @param where the conditional clause
+     * @param orderBy how to order the results
      * @return a Result Set containing the rows
      * @throws SQLException if something happened that can't be handled
      */
-    public static ResultSet query(String what, String where) throws SQLException {
-        return query("EVENT", what, where);
+    public static ResultSet query(String what, String where, String orderBy) throws SQLException {
+        assert what != null;
+        return query("EVENT", what, where, orderBy);
     }
 
     /**
@@ -88,6 +93,7 @@ public class TblEvent extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static int getEventId(ResultSet rs) throws SQLException {
+        assert rs != null;
         return rs.getInt("EVENT_ID");
     }
 
@@ -99,7 +105,8 @@ public class TblEvent extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static String getDescription(ResultSet rs) throws SQLException {
-        return rs.getString("DESC");
+        assert rs != null;
+        return unencode(rs.getString("DESC"));
     }
 
     /**
@@ -110,20 +117,40 @@ public class TblEvent extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static String getWhenReceived(ResultSet rs) throws SQLException {
+        assert rs != null;
         return rs.getString("OCCURRED");
     }
-    
+
+    /**
+     * Return a string describing this event for a report
+     *
+     * @param rs
+     * @return
+     * @throws java.sql.SQLException
+     */
+    public static String reportEvent(ResultSet rs) throws SQLException {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("Event: '");
+        sb.append(TblEvent.getWhenReceived(rs));
+        sb.append(" ");
+        sb.append(TblEvent.getDescription(rs));
+
+        return sb.toString();
+    }
+
     /**
      * Dump the contents of the table
+     *
      * @return
-     * @throws SQLException 
+     * @throws SQLException
      */
     public static String printTable() throws SQLException {
         StringBuilder sb = new StringBuilder();
         ResultSet rs;
-        
+
         sb.append("EventKey Description WhenOccurrred\n");
-        rs = query("*", null);
+        rs = query("*", null, "EVENT_ID");
         while (rs.next()) {
             sb.append(getEventId(rs));
             sb.append(" ");
@@ -133,7 +160,7 @@ public class TblEvent extends SQL {
             sb.append("\n");
         }
         return sb.toString();
-    } 
+    }
 
     /**
      * Drop the table and all data.
@@ -142,29 +169,5 @@ public class TblEvent extends SQL {
      */
     public static void dropTable() throws SQLException {
         update("drop table if exists EVENT");
-    }
-
-    /**
-     * Get an SQL TIMESTAMP
-     *
-     * @param ms
-     * @return
-     */
-    private static String sqlDateTime(long ms) {
-        Date d;
-        SimpleDateFormat sdf;
-        TimeZone tz;
-        String s1;
-
-        tz = TimeZone.getDefault();
-        sdf = new SimpleDateFormat("yyyy-MM-dd' 'HH:mm:ssZ");
-        sdf.setTimeZone(tz);
-        if (ms == 0) {
-            d = new Date();
-        } else {
-            d = new Date(ms);
-        }
-        s1 = sdf.format(d);
-        return s1.substring(0, 22) + ":" + s1.substring(22, 24);
     }
 }

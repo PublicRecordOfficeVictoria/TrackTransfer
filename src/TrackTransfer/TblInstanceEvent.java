@@ -10,18 +10,18 @@ import java.sql.SQLException;
 import java.util.logging.Logger;
 
 /**
- * This class encapsulates the Event table in the SQL database. It allows the
- * table to be created, rows added, queried, and dropped.
+ * This class implements a many/many mapping of instances (in a delivery) and
+ * events.
  *
  * @author Andrew
  */
-public class TblItemEvent extends SQL {
+public class TblInstanceEvent extends SQL {
 
-    private final static Logger LOG = Logger.getLogger("TrackTransfer.TblItemEvent");
+    private final static Logger LOG = Logger.getLogger("TrackTransfer.TblInstanceEvent");
 
-    static String CREATE_ITEM_EVENT_TABLE
-            = "create table ITEM_EVENT ("
-            + "ITEM_ID integer NOT NULL, " // key of item linked to event
+    static String CREATE_INSTANCE_EVENT_TABLE
+            = "create table INSTANCE_EVENT ("
+            + "INSTANCE_ID integer NOT NULL, " // key of item linked to event
             + "EVENT_ID integer NOT NULL " // key of event linked to item
             + ")";
 
@@ -30,7 +30,7 @@ public class TblItemEvent extends SQL {
      *
      * @throws SQLException if something happened that can't be handled
      */
-    public TblItemEvent() throws SQLException {
+    public TblInstanceEvent() throws SQLException {
         super();
     }
         
@@ -41,21 +41,24 @@ public class TblItemEvent extends SQL {
      * @throws SQLException 
      */
     public static void createTable() throws SQLException {
-        update(CREATE_ITEM_EVENT_TABLE);
+        update(CREATE_INSTANCE_EVENT_TABLE);
     }
 
     /**
-     * Add an item/event link to the item event table
+     * Add an instance/event link to the item/event table
      *
-     * @param itemKey
-     * @param eventKey
+     * @param instanceKey the instance to link
+     * @param eventKey the event to link
      * @throws SQLException if something happened that can't be handled
      */
-    public static void add(int itemKey, int eventKey) throws SQLException {
+    public static void add(int instanceKey, int eventKey) throws SQLException {
         StringBuilder sb = new StringBuilder();
+        
+        assert instanceKey > 0;
+        assert eventKey > 0;
 
-        sb.append("insert into ITEM_EVENT (ITEM_ID, EVENT_ID) values (");
-        sb.append(itemKey);
+        sb.append("insert into INSTANCE_EVENT (INSTANCE_ID, EVENT_ID) values (");
+        sb.append(instanceKey);
         sb.append(", ");
         sb.append(eventKey);
         sb.append(");");
@@ -69,22 +72,25 @@ public class TblItemEvent extends SQL {
      *
      * @param what what columns to be returned in the result set
      * @param where the conditional clause
+     * @param orderBy how to order the results
      * @return a Result Set containing the rows
      * @throws SQLException if something happened that can't be handled
      */
-    public static ResultSet query(String what, String where) throws SQLException {
-        return query("ITEM_EVENT", what, where);
+    public static ResultSet query(String what, String where, String orderBy) throws SQLException {
+        assert what != null;
+        return query("INSTANCE_EVENT", what, where, orderBy);
     }
 
     /**
-     * Get the item key for a row in a result set.
+     * Get the instance key for a row in a result set.
      *
      * @param rs
      * @return
      * @throws SQLException if something happened that can't be handled
      */
-    public static int getItemId(ResultSet rs) throws SQLException {
-        return rs.getInt("ITEM_ID");
+    public static int getInstanceId(ResultSet rs) throws SQLException {
+        assert rs != null;
+        return rs.getInt("INSTANCE_ID");
     }
 
     /**
@@ -95,6 +101,7 @@ public class TblItemEvent extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static int getEventId(ResultSet rs) throws SQLException {
+        assert rs != null;
         return rs.getInt("EVENT_ID");
     }
     
@@ -108,9 +115,9 @@ public class TblItemEvent extends SQL {
         ResultSet rs;
         
         sb.append("ItemKey EventKey\n");
-        rs = query("*", null);
+        rs = query("*", null, "INSTANCE_ID");
         while (rs.next()) {
-            sb.append(getItemId(rs));
+            sb.append(getInstanceId(rs));
             sb.append(" ");
             sb.append(getEventId(rs));
             sb.append("\n");
@@ -124,6 +131,6 @@ public class TblItemEvent extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static void dropTable() throws SQLException {
-        update("drop table if exists ITEM_EVENT");
+        update("drop table if exists INSTANCE_EVENT");
     }
 }

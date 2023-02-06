@@ -17,12 +17,10 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
-import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -40,11 +38,12 @@ public class TrackTransfer {
      * Report on version...
      *
      * <pre>
-     * 201502   1.0 Initial release
+     * 20230127   0.1 Split Item and Instance
+     * 20230206   0.2 Basic funtionality working
      * </pre>
      */
     static String version() {
-        return ("0.1");
+        return ("0.2");
     }
 
     static String copyright = "Copyright 2022 Public Record Office Victoria";
@@ -64,7 +63,7 @@ public class TrackTransfer {
         // set up the console handler for log messages and set it to output anything
         System.setProperty("java.util.logging.SimpleFormatter.format", "%5$s%n");
         Handler[] hs = LOG.getHandlers();
-        for (Handler h: hs) {
+        for (Handler h : hs) {
             h.setLevel(Level.FINEST);
             h.setFormatter(new SimpleFormatter());
         }
@@ -92,10 +91,11 @@ public class TrackTransfer {
 
         // sanity check...
         if (args.length < 1) {
-            throw new AppFatal("First command line argument is the subcommand (" + usage + ")");
+            // LOG.log(Level.WARNING, "Unrecognised subcommand. Expected to see {0}", new Object[]{usage});
+            return;
         }
 
-        switch (args[0].toLowerCase()) {
+        switch (args[0].toLowerCase().trim()) {
             case "help":
                 LOG.info("Track transfer sub commands:");
                 LOG.info(" newTransfer: create a new transfer from scratch (can only be done at the start)");
@@ -136,13 +136,16 @@ public class TrackTransfer {
                 printTables(args);
                 break;
             case "//":
+            case "!":
+            case "":
+            case " ":
                 break;
             default:
-                LOG.log(Level.INFO, "Unrecognised subcommand. Saw ''{0}'' ({1})", new Object[]{args[0], usage});
+                LOG.log(Level.WARNING, "Unrecognised subcommand. Saw ''{0}'' ({1})", new Object[]{args[0], usage});
         }
     }
 
-    private void processFile(String args[]) throws AppFatal, AppError, SQLException {
+    private void processFile(String args[]) throws AppFatal, SQLException {
         Path p;
         FileInputStream fis;     // source of control file to build VEOs
         InputStreamReader isr;
@@ -164,7 +167,11 @@ public class TrackTransfer {
 
             while ((line = br.readLine()) != null) {
                 tokens = line.split("\\s(?=(([^\"]*\"){2})*[^\"]*$)\\s*");
-                doCommand(tokens);
+                try {
+                    doCommand(tokens);
+                } catch (AppError ae) {
+                    LOG.log(Level.WARNING, "****** Something went wrong: {0}", new Object[]{ae.getMessage()});
+                }
             }
             br.close();
             isr.close();
@@ -184,9 +191,9 @@ public class TrackTransfer {
         SQL.connect(args[1]);
         LOG.info(TblTransfer.printTable());
         LOG.info(TblDelivery.printTable());
-        LOG.info(TblItem.printTable());
+        LOG.info(TblInstance.printTable());
         LOG.info(TblEvent.printTable());
-        LOG.info(TblItemEvent.printTable());
+        LOG.info(TblInstanceEvent.printTable());
         SQL.disconnect();
     }
 
@@ -227,14 +234,13 @@ public class TrackTransfer {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        ConsoleHandler ch;
         TrackTransfer tt;
 
         try {
             tt = new TrackTransfer(args);
             tt.doCommand(args);
         } catch (AppError e) {
-            System.err.println(e.getMessage());
+            System.err.println("Command failed: " + e.getMessage());
         } catch (AppFatal e) {
             System.err.println("Fatal error (should not have occurred): " + e.toString());
             e.printStackTrace();

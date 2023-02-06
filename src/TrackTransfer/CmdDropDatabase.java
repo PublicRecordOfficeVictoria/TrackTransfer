@@ -11,16 +11,14 @@ import java.util.logging.Logger;
  * @author Andrew
  */
 public class CmdDropDatabase extends SubCommand {
-
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdDropDatabase");
+    private String database;    // database being connected to (may be null)
 
     public CmdDropDatabase() throws AppFatal {
         super();
     }
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
-        
-        database = "jdbc:h2:./trackTransfer";
         
         config(args);
 
@@ -40,7 +38,7 @@ public class CmdDropDatabase extends SubCommand {
 
         // check necessary fields have been specified
         if (database == null) {
-            throw new AppFatal("URL for database has not been specified (-db)");
+            throw new AppError("URL for database has not been specified (-db)");
         }
 
         // say what we are doing
@@ -56,10 +54,11 @@ public class CmdDropDatabase extends SubCommand {
         }
 
         // connect to the database and drop the tables
-        connectDB(database);
-        TblItemEvent.dropTable();
-        TblEvent.dropTable();
+        database = connectDB(database);
         TblItem.dropTable();
+        TblInstanceEvent.dropTable();
+        TblEvent.dropTable();
+        TblInstance.dropTable();
         TblDelivery.dropTable();
         TblTransfer.dropTable();
         disconnectDB();
@@ -68,8 +67,8 @@ public class CmdDropDatabase extends SubCommand {
         LOG.log(Level.INFO, " Database dropped ({0})", database);
     }
 
-    public void config(String args[]) throws AppFatal {
-        String usage = "-db <databaseURL> -desc <text>";
+    public void config(String args[]) throws AppError {
+        String usage = "-db <databaseURL> [-v] [-d] [-help]";
         int i, j;
 
         // process remaining command line arguments
@@ -105,11 +104,11 @@ public class CmdDropDatabase extends SubCommand {
 
                     // otherwise check to see if it is a common argument
                     default:
-                        throw new AppFatal("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
+                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
                 }
             }
         } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppFatal("Missing argument. Usage: " + usage);
+            throw new AppError("Missing argument. Usage: " + usage);
         }
     }
 }

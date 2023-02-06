@@ -6,9 +6,7 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.nio.file.DirectoryIteratorException;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
+import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.ResultSet;
@@ -22,29 +20,41 @@ import java.util.logging.Logger;
  * @author Andrew
  */
 public class CmdReport extends SubCommand {
-
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
+    private String database;    // database being connected to (may be null)
     private Path outputFile;       // report file
+    private Reports reportReq;      // report requested
 
     public CmdReport() throws AppFatal {
         super();
+    }
+
+    private enum Reports {
+        COMPLETE, // all items and instances
+        CUSTODY_ACCEPTED, // all items for which custody has been accepted
+        ABANDONED, // all items which have been abandoned
+        INCOMPLETE  // all items for which processing is incomplete
     }
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
         FileOutputStream fos;
         OutputStreamWriter osw;
         BufferedWriter bw;
-        int itemKey;
-        ResultSet items, events;
-        
-        database = "jdbc:h2:./trackTransfer";
-        
+
+        reportReq = Reports.COMPLETE;
+
         config(args);
 
         // just asked for help?
         if (help) {
             LOG.setLevel(Level.INFO);
             LOG.info("'Annotate' command line arguments:");
+            LOG.info(" Reports available:");
+            LOG.info("  -complete: full report of all the items and instances (default)");
+            LOG.info("  -custody-accepted: report of all items for which custody has been accepted");
+            LOG.info("  -abandoned: report of all items which have been abandoned");
+            LOG.info("  -incomplete: report of all items for which processing is incomplete");
+            LOG.info("");
             LOG.info(" Mandatory:");
             LOG.info("  -o <filename>: output file for the report");
             LOG.info("");
@@ -64,8 +74,24 @@ public class CmdReport extends SubCommand {
 
         // say what we are doing
         LOG.info("Requested:");
-        LOG.info(" Generate report");
-        LOG.log(Level.INFO, " Database: {0}", database);
+        switch (reportReq) {
+            case COMPLETE:
+                LOG.info(" Generate Complete report");
+                break;
+            case CUSTODY_ACCEPTED:
+                LOG.info(" Generate Custody Accepted report");
+                break;
+            case ABANDONED:
+                LOG.info(" Generate Abandoned report");
+                break;
+            case INCOMPLETE:
+                LOG.info(" Generate Items not finalised report");
+                break;
+            default:
+                LOG.info(" Generate Unknown report");
+                break;
+        }
+        LOG.log(Level.INFO, " Database: {0}", database==null?"Derived from .mv.db filename":database);
         LOG.log(Level.INFO, " Report: {0}", outputFile.toString());
         if (LOG.getLevel() == Level.INFO) {
             LOG.info(" Logging: verbose");
@@ -83,40 +109,35 @@ public class CmdReport extends SubCommand {
             bw.append("Report of all items\n\n");
 
             // connect to the database and create the tables
-            connectDB(database);
+            database = connectDB(database);
 
-            // go through the items
-            items = TblItem.query("*", null);
-            while (items.next()) {
-                bw.append("Item: '");
-                bw.append(TblItem.getFilename(items));
-                bw.append(" (");
-                bw.append(TblItem.getStatus(items));
-                bw.append(")");
-                bw.append("'\n");
-                bw.append(" Last seen at '");
-                bw.append(TblItem.getFilepath(items));
-                bw.append("'\n");
-                itemKey = TblItem.getItemId(items);
-                
-                // get events related to this item
-                bw.append(" Events:\n");
-                events = SQL.query("ITEM_EVENT, EVENT", "*", "ITEM_EVENT.EVENT_ID=EVENT.EVENT_ID AND ITEM_EVENT.ITEM_ID="+itemKey);
-                // events = TblEvent.query("*", "ITEM_ID="+itemKey);
-                while (events.next()) {
-                    bw.append("  ");
-                    bw.append(TblEvent.getWhenReceived(events));
-                    bw.append(" ");
-                    bw.append(TblEvent.getDescription(events));
-                    bw.append("\n");
-                }
+            //System.out.println(TblItem.printTable());
+            //System.out.println(TblInstance.printTable());
+            //System.out.println(TblInstanceEvent.printTable());
+            //System.out.println(TblEvent.printTable());
+            switch (reportReq) {
+                case COMPLETE:
+                    completeReport(bw);
+                    break;
+                case CUSTODY_ACCEPTED:
+                    custodyAcceptedReport(bw);
+                    break;
+                case ABANDONED:
+                    abandonedReport(bw);
+                    break;
+                case INCOMPLETE:
+                    incompleteReport(bw);
+                    break;
+                default:
+                    LOG.info(" Generate Unknown report");
+                    break;
             }
 
             // for each item, list the events
             disconnectDB();
-            
+
             bw.append("End of Report");
-            
+
             bw.close();
             osw.close();
             fos.close();
@@ -125,11 +146,11 @@ public class CmdReport extends SubCommand {
         }
 
         // acknowledge creation
-        LOG.log(Level.INFO, "Report generated from ({0}) to ''{1}''", new Object[]{database,outputFile.toString()});
+        LOG.log(Level.INFO, "Report generated from ({0}) to ''{1}''", new Object[]{database, outputFile.toString()});
     }
 
-    public void config(String args[]) throws AppFatal {
-        String usage = "-db <databaseURL> -o <file>";
+    public void config(String args[]) throws AppError {
+        String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
         int i;
 
         // process remaining command line arguments
@@ -165,33 +186,147 @@ public class CmdReport extends SubCommand {
                         outputFile = Paths.get(args[i]);
                         i++;
                         break;
+                    // complete report of all items/instances/events
+                    case "-complete":
+                        reportReq = Reports.COMPLETE;
+                        i++;
+                        break;
+                    // report of all items abandoned
+                    case "-abandoned":
+                        reportReq = Reports.ABANDONED;
+                        i++;
+                        break;
+                    // report of all items for which custody was accepted
+                    case "-custody-accepted":
+                        reportReq = Reports.CUSTODY_ACCEPTED;
+                        i++;
+                        break;
+                    // complete report of all items that are incomplete
+                    case "-incomplete":
+                        reportReq = Reports.INCOMPLETE;
+                        i++;
+                        break;
                     // otherwise check to see if it is a common argument
                     default:
-                        throw new AppFatal("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
+                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
                 }
             }
         } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppFatal("Missing argument. Usage: " + usage);
+            throw new AppError("Missing argument. Usage: " + usage);
         }
     }
 
-    private void annotateItems(Path dir, int eventKey) throws AppFatal, SQLException {
-        int itemKey;
-        String s1;
+    /**
+     * Generate a complete report of all items received, all instances for
+     * each item, and all events for each instance.
+     * 
+     * @param w
+     * @throws SQLException
+     * @throws IOException 
+     */
+    private void completeReport(Writer w) throws SQLException, IOException {
+        int itemKey, instanceKey;
+        ResultSet items, instances, events;
+        int i;
 
-        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
-            for (Path entry : ds) {
-                if (entry.toFile().isDirectory()) {
-                    annotateItems(entry, eventKey);
-                } else {
-                    s1 = entry.getFileName().toString().replace("'", "");
-                    if ((itemKey = TblItem.itemExists(s1)) != 0) {
-                        TblItemEvent.add(itemKey, eventKey);
-                    }
+        w.append("COMPLETE REPORT (all Items/Instances/Events)\n");
+        w.append("Run \n");
+        w.append("\n");
+        
+        // go through the items
+        i = 0;
+        items = TblItem.query("*", null, "FILENAME");
+        while (items.next()) {
+            i++;
+            if (i % 100 == 0) {
+                System.out.println(i);
+            }
+            w.append(TblItem.reportItem(items));
+            w.append("\n");
+            itemKey = TblItem.getItemId(items);
+
+            // get instances of this item
+            instances = TblInstance.query("*", "ITEM_ID=" + itemKey, "ITEM_ID");
+            // instances = SQL.query("select * from INSTANCE where ITEM_ID="+itemKey+" ORDER BY ITEM_ID");
+            while (instances.next()) {
+                w.append("  ");
+                w.append(TblInstance.reportInstance(instances));
+                w.append("\n");
+                instanceKey = TblInstance.getInstanceId(instances);
+
+                // get events related to this instance
+                events = SQL.query("INSTANCE_EVENT join EVENT on INSTANCE_EVENT.EVENT_ID=EVENT.EVENT_ID", "*", "INSTANCE_EVENT.INSTANCE_ID=" + instanceKey, "EVENT_ID");
+                while (events.next()) {
+                    w.append("    ");
+                    w.append(TblEvent.reportEvent(events));
+                    w.append("\n");
                 }
             }
-        } catch (DirectoryIteratorException | IOException e) {
-            throw new AppFatal(e.getMessage());
         }
+    }
+    
+    private void custodyAcceptedReport(Writer w) throws SQLException, IOException {
+        ResultSet items;
+        int i;
+        
+        w.append("Custody Accepted report\n");
+        w.append("Run \n");
+        w.append("\n");
+        
+        // go through the items
+        i = 0;
+        items = TblItem.query("*", "STATUS='Custody-Accepted'", "FILENAME");
+        while (items.next()) {
+            i++;
+            if (i % 100 == 0) {
+                System.out.println(i);
+            }
+            w.append(TblItem.reportItem(items));
+            w.append("\n");
+        }
+    }
+    
+    private void abandonedReport(Writer w) throws SQLException, IOException {
+        ResultSet items;
+        int i;
+        
+        w.append("Items abandoned report\n");
+        w.append("Run \n");
+        w.append("\n");
+        
+        // go through the items
+        i = 0;
+        items = TblItem.query("*", "STATUS='Abandoned'", "FILENAME");
+        while (items.next()) {
+            i++;
+            if (i % 100 == 0) {
+                System.out.println(i);
+            }
+            w.append(TblItem.reportItem(items));
+            w.append("\n");
+        }
+        
+    }
+    
+    private void incompleteReport(Writer w) throws SQLException, IOException {
+        ResultSet items;
+        int i;
+        
+        w.append("Items unfinished report\n");
+        w.append("Run \n");
+        w.append("\n");
+        
+        // go through the items
+        i = 0;
+        items = TblItem.query("*", "IS_FINALISED=FALSE", "FILENAME");
+        while (items.next()) {
+            i++;
+            if (i % 100 == 0) {
+                System.out.println(i);
+            }
+            w.append(TblItem.reportItem(items));
+            w.append("\n");
+        }
+        
     }
 }

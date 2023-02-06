@@ -9,8 +9,12 @@ import VERSCommon.AppFatal;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.TimeZone;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -94,9 +98,10 @@ public abstract class SQL {
             stmt.closeOnCompletion();
             stmt.executeUpdate(command, Statement.RETURN_GENERATED_KEYS);
             try (ResultSet rs = stmt.getGeneratedKeys()) {
-                assert rs.next() : "No primary key returned after adding a row (SQL.addSingleRow)";
+                rs.next();
+                // assert rs.next() : "No primary key returned after adding a row (SQL.addSingleRow)";
                 key = rs.getInt(primaryKey);
-                assert !rs.next() : "More than one primary key returned after adding a single row (SQL.addSingleRow)";
+                // assert !rs.next() : "More than one primary key returned after adding a single row (SQL.addSingleRow)";
             }
         }
         return key;
@@ -123,10 +128,11 @@ public abstract class SQL {
      * @param table table to query
      * @param what what columns to be returned in the result set
      * @param where the conditional clause
+     * @param orderBy the ordering clause (may be null)
      * @return a Result Set containing the rows
      * @throws SQLException if something happened that can't be handled
      */
-    protected static ResultSet query(String table, String what, String where) throws SQLException {
+    protected static ResultSet query(String table, String what, String where, String orderBy) throws SQLException {
         StringBuilder sb = new StringBuilder();
         ResultSet rs;
 
@@ -139,6 +145,10 @@ public abstract class SQL {
         if (where != null) {
             sb.append(" where ");
             sb.append(where);
+        }
+        if (orderBy != null) {
+            sb.append(" order by ");
+            sb.append(orderBy);
         }
         rs = query(sb.toString());
         return rs;
@@ -160,6 +170,70 @@ public abstract class SQL {
         rs = stmt.executeQuery(command);
         assert rs != null;
         return rs;
+    }
+    
+    /**
+     * Get an SQL TIMESTAMP. If ms is 0, get the current date/time, otherwise
+     * convert the ms since the Java epoch. Note that SQL wants a ':' between
+     * the hours and minutes of a time zone, whereas Java doesn't have anything
+     *
+     * @param ms the timestamp in milliseconds
+     * @return
+     */
+    protected static String getSQLTimeStamp(long ms) {
+        Date d;
+        SimpleDateFormat sdf;
+        TimeZone tz;
+        String s1;
+
+        tz = TimeZone.getDefault();
+        sdf = new SimpleDateFormat("yyyy-MM-dd' 'HH:mm:ssZ");
+        sdf.setTimeZone(tz);
+        if (ms == 0) {
+            d = new Date();
+        } else {
+            d = new Date(ms);
+        }
+        s1 = sdf.format(d);
+        return s1.substring(0, 22) + ":" + s1.substring(22, 24);
+    }
+    
+    /**
+     * Encode single quotes to be double quotes in a string to be put into an
+     * SQL database
+     * @param s
+     * @return 
+     */
+    protected static String encode(String s) {
+        if (s == null) {
+            return null;
+        }
+        return s.replace("'", "''");
+    }
+    
+    /**
+     * Unencode double quotes to be single quotes in strings from an SQL database
+     * @param s
+     * @return 
+     */
+    protected static String unencode(String s) {
+        return s.replace("'", "'");
+    }
+    
+    /**
+     * Truncate a string value if longer than the field length
+     * 
+     * @param desc
+     * @param s
+     * @param maxlen
+     * @return 
+     */
+    protected static String truncate(String desc, String s, int maxlen) {
+        if (s != null && s.length()>maxlen) {
+            LOG.log(Level.WARNING, "{0} ({0}) truncated as longer than {1}", new Object[]{desc, s, maxlen});
+            s = s.substring(0, maxlen);
+        }
+        return s;
     }
 
     /**
@@ -213,5 +287,16 @@ public abstract class SQL {
         sb.append(method);
         sb.append(")");
         return new AppFatal(sb.toString());
+    }
+    
+    public static void dumpRSMetadata(ResultSet rs) throws SQLException {
+        ResultSetMetaData rsm = rs.getMetaData();
+        int i;
+        
+        System.out.println("Column count: "+rsm.getColumnCount());
+        for (i=1; i<rsm.getColumnCount()+1; i++) {
+            System.out.print(rsm.getColumnName(i)+" ");
+            System.out.println(rsm.getColumnTypeName(i));
+        }
     }
 }

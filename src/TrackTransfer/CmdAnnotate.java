@@ -8,21 +8,25 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * This command annotates the items in a directory. The basic annotation is
- * an event.
+ * This command annotates the items in a directory. The basic annotation is an
+ * event.
+ *
  * @author Andrew
  */
 public class CmdAnnotate extends SubCommand {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
+    private String database;    // database being connected to (may be null)
     private String desc;        // description of the event
     private Path rootDir;       // root directory containing the objects being annotated
     private int count;          // number of items annotated
     private String status;      // status of the items
+    boolean isFinalised;        // true if the status implies that the item has been finalised (i.e. custody accepted or abandoned)
 
     public CmdAnnotate() throws AppFatal {
         super();
@@ -31,10 +35,10 @@ public class CmdAnnotate extends SubCommand {
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
         int eventKey;
 
-        database = "jdbc:h2:./trackTransfer";
         count = 0;
         status = null;
-        
+        isFinalised = false;
+
         config(args);
 
         // just asked for help?
@@ -42,22 +46,39 @@ public class CmdAnnotate extends SubCommand {
             LOG.setLevel(Level.INFO);
             LOG.info("'Annotate' command line arguments:");
             LOG.info(" Mandatory:");
-            LOG.info("  -desc <description>: annotation text");
             LOG.info("  -dir <filename>: name of directory holding objects being annotated");
             LOG.info("");
             LOG.info(" Optional:");
             LOG.info("  -db <databaseURL>: URL identifying the database (default 'jdbc:h2:./trackTransfer')");
-            LOG.info("  -status <status>: String giving new status (special values 'failed' & 'custody-accepted'");
+            LOG.info("  -status <status>: String giving new status (special values 'abandoned' & 'custody-accepted'");
+            LOG.info("  -desc <description>: annotation text");
             LOG.info("  -v: verbose mode: give more details about processing");
             LOG.info("  -d: debug mode: give a lot of details about processing");
             LOG.info("  -help: print this listing");
             LOG.info("");
+            LOG.info("One or both of -status and -desc must be present");
             return;
         }
 
         // check necessary fields have been specified
         if (desc == null) {
-            throw new AppFatal("Annotation text must be specified (-desc)");
+            if (status != null) {
+                desc = "Status changed to '" + status + "'";
+            } else {
+                throw new AppError("Annotation text must be specified (-desc)");
+            }
+        }
+        if (status != null) {
+            switch (status.toLowerCase()) {
+                case "custody-accepted":
+                case "abandoned":
+                    isFinalised = true;
+                    desc = desc + "& item automatically finalised";
+                    break;
+                default:
+                    isFinalised = false;
+                    break;
+            }
         }
         if (rootDir == null) {
             throw new AppFatal("Directory containing the items being annotated must be specified (-dir)");
@@ -66,12 +87,15 @@ public class CmdAnnotate extends SubCommand {
         // say what we are doing
         LOG.info("Requested:");
         LOG.info(" Annotate items");
-        LOG.log(Level.INFO, " Database: {0}", database);
+        LOG.log(Level.INFO, " Database: {0}", database==null?"Derived from .mv.db filename":database);
         LOG.log(Level.INFO, " Annotationn: {0}", desc);
         if (status != null) {
             LOG.log(Level.INFO, " Status: ''{0}''", status);
         } else {
             LOG.info(" Status not specified (and will not change)");
+        }
+        if (isFinalised) {
+            LOG.log(Level.INFO, " Item automatically finalised (status = custody-accepted or abandoned");
         }
         LOG.log(Level.INFO, " Directory of items: {0}", rootDir.toString());
         if (LOG.getLevel() == Level.INFO) {
@@ -84,15 +108,15 @@ public class CmdAnnotate extends SubCommand {
 
         // check if the root directory is a directory and exists
         if (!rootDir.toFile().exists()) {
-            throw new AppError("New Delivery: root directory '" + rootDir.toString() + "' does not exist");
+            throw new AppError("New Delivery: directory '" + rootDir.toString() + "' does not exist");
         }
         if (!rootDir.toFile().isDirectory()) {
-            throw new AppError("New Delivery: root directory '" + rootDir.toString() + "' is not a directory");
+            throw new AppError("New Delivery: directory '" + rootDir.toString() + "' is not a directory");
         }
 
         // connect to the database and create the tables
-        connectDB(database);
-        
+        database = connectDB(database);
+
         // add the delivery event
         eventKey = TblEvent.add(desc);
 
@@ -105,8 +129,8 @@ public class CmdAnnotate extends SubCommand {
         LOG.log(Level.INFO, " {0} items annotated in ({1}) with event {2}", new Object[]{count, database, eventKey});
     }
 
-    public void config(String args[]) throws AppFatal {
-        String usage = "-db <databaseURL> -desc <text> -dir <directory>";
+    public void config(String args[]) throws AppError {
+        String usage = "[-db <databaseURL>] [-desc <text>] [-status <text>] [-final] [-abandon] -dir <directory> [-v] [-d] [-help]";
         int i;
 
         // process remaining command line arguments
@@ -147,6 +171,16 @@ public class CmdAnnotate extends SubCommand {
                         status = args[i].replace("'", "''");
                         i++;
                         break;
+                    // custody has been accepted of the items
+                    case "-custody-accepted":
+                        i++;
+                        status = "Custody-Accepted";
+                        break;
+                    // items have been abandoned
+                    case "-abandoned":
+                        i++;
+                        status = "Abandoned";
+                        break;
                     // directory that contains the items in the delivery
                     case "-dir":
                         i++;
@@ -155,65 +189,83 @@ public class CmdAnnotate extends SubCommand {
                         break;
                     // otherwise check to see if it is a common argument
                     default:
-                        throw new AppFatal("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
+                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
                 }
             }
         } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppFatal("Missing argument. Usage: " + usage);
+            throw new AppError("Missing argument. Usage: " + usage);
         }
     }
 
     /**
      * Annotate the items in this directory. If the item is, itself, a directory
      * annotateItems() is called recursively.
-     * 
+     *
      * @param dir the directory being processes
      * @param eventKey the event describing this delivery
      * @throws AppFatal something went fatally wrong
      * @throws SQLException a database problem (should never occur)
      */
     private void annotateItems(Path dir, int eventKey) throws AppFatal, SQLException {
-        int itemKey;
-        String s1, s2;
-        Path p;
-        int i;
-        
+        int itemKey, instanceKey;
+        ResultSet rsItem;
+        String s1;
+
         // go through the items in the directory
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
             for (Path entry : ds) {
-                
+
                 // recurse if the item is a directory
                 if (entry.toFile().isDirectory()) {
                     annotateItems(entry, eventKey);
-                    
-                // otherwise register the item    
+
+                    // otherwise change the status and/or description   
                 } else {
-                    
+
                     // eliminate quote characters as this causes problems with SQL
-                    s1 = entry.getFileName().toString().replace("'", "''");
-                    p = entry.toRealPath();
-                    i = p.getNameCount();
-                    if (i < 2) {
-                        s2 = p.toString().replace("'", "''");
-                    } else {
-                        s2 = p.subpath(0, i-1).toString().replace("'", "''");
-                    }
-                    
+                    s1 = getFileName(entry);
+
                     // if item exist annotate it, otherwise complain
-                    if ((itemKey = TblItem.itemExists(s1)) != 0) {
+                    rsItem = TblItem.findItem(s1, null);
+                    if (rsItem.next()) {
+                        itemKey = TblItem.getItemId(rsItem);
+                        assert itemKey != 0;
                         if (status != null) {
-                            TblItem.changeStatus(itemKey, status);
+                            TblItem.setStatus(itemKey, status, isFinalised);
                         }
-                        TblItemEvent.add(itemKey, eventKey);
+                        instanceKey = TblItem.getActiveInstanceId(rsItem);
+                        assert instanceKey != 0;
+                        TblInstanceEvent.add(instanceKey, eventKey);
                         count++;
-                        LOG.log(Level.FINE, "Annotated ''{0}'' (in {1})", new Object[]{s1,s2});
+                        LOG.log(Level.FINE, "Annotated ''{0}''", new Object[]{s1});
                     } else {
-                        LOG.log(Level.WARNING, "Failed annotating ''{0}'' (in {1}) as not in database", new Object[]{s1,s2});
+                        LOG.log(Level.WARNING, "Failed annotating ''{0}'' as it was not in the database", new Object[]{s1});
                     }
                 }
             }
         } catch (DirectoryIteratorException | IOException e) {
             throw new AppFatal(e.getMessage());
         }
+    }
+
+    /**
+     * Get a file name from a path. Suppress the final '.lnk' in a Windows short
+     * cut. Replace single quotes with two quotes to be SQL safe.
+     *
+     * @param p
+     * @return
+     */
+    private String getFileName(Path p) {
+        String s;
+
+        assert p != null;
+        s = p.getFileName().toString().trim();
+        if (s.toLowerCase().endsWith(".lnk")) {
+            s = s.substring(0, s.length() - 4);
+        } else if (s.toLowerCase().endsWith(" - shortcut")) {
+            s = s.substring(0, s.length() - 11);
+        }
+        s = s.replace("'", "''");
+        return s;
     }
 }

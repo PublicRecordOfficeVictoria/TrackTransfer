@@ -5,11 +5,10 @@
  */
 package TrackTransfer;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.TimeZone;
 import java.util.logging.Logger;
 
 /**
@@ -21,12 +20,16 @@ import java.util.logging.Logger;
 public class TblDelivery extends SQL {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblDelivery");
-
+    
+    static final int MAX_FILEPATH_LEN = 2560;
+    static final int MAX_DESC_LEN = 100;
+    
     static String CREATE_DELIVERY_TABLE
             = "create table DELIVERY ("
             + "DELIVERY_ID integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " // primary key
             + "TRANSFER_ID integer NOT NULL," // transfer delivery belongs to
-            + "DESC varchar(100) NOT NULL," // arbitrary description
+            + "FILEPATH varchar("+MAX_FILEPATH_LEN+") NOT NULL," // pathname of the root of the delivery tree
+            + "DESC varchar("+MAX_DESC_LEN+") NOT NULL," // arbitrary description
             + "WHEN_RECEIVED timestamp(0) with time zone NOT NULL," // date/time delivery received
             + "constraint TRANSFER_FK foreign key (TRANSFER_ID) references TRANSFER(TRANSFER_ID)"
             + ")";
@@ -58,15 +61,25 @@ public class TblDelivery extends SQL {
      * @return primary key of the added row
      * @throws SQLException if something happened that can't be handled
      */
-    public static int add(int transferId, String desc) throws SQLException {
+    public static int add(int transferId, String desc, Path root) throws SQLException {
         StringBuilder sb = new StringBuilder();
+        String s;
+        
+        assert transferId > 0;
+        assert desc != null;
+        assert root != null;
+        
+        desc = truncate("Description", desc, MAX_DESC_LEN);
+        s = truncate("Filepath", root.toString(), MAX_FILEPATH_LEN);
 
-        sb.append("insert into DELIVERY (TRANSFER_ID, DESC, WHEN_RECEIVED) values (");
+        sb.append("insert into DELIVERY (TRANSFER_ID, FILEPATH, DESC, WHEN_RECEIVED) values (");
         sb.append(transferId);
         sb.append(", '");
-        sb.append(desc);
+        sb.append(encode(s));
         sb.append("', '");
-        sb.append(sqlDateTime(0));
+        sb.append(encode(desc));
+        sb.append("', '");
+        sb.append(getSQLTimeStamp(0));
         sb.append("');");
         return addSingleRow(sb.toString(), "DELIVERY_ID");
     }
@@ -78,11 +91,14 @@ public class TblDelivery extends SQL {
      *
      * @param what what columns to be returned in the result set
      * @param where the conditional clause
+     * @param orderBy how to order the results
      * @return a Result Set containing the rows
      * @throws SQLException if something happened that can't be handled
      */
-    public static ResultSet query(String what, String where) throws SQLException {
-        return query("DELIVERY", what, where);
+    public static ResultSet query(String what, String where, String orderBy) throws SQLException {
+        assert what != null;
+        
+        return query("DELIVERY", what, where, orderBy);
     }
 
     /**
@@ -93,6 +109,7 @@ public class TblDelivery extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static int getDeliveryId(ResultSet rs) throws SQLException {
+        assert rs != null;
         return rs.getInt("DELIVERY_ID");
     }
 
@@ -104,7 +121,20 @@ public class TblDelivery extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static int getTransferId(ResultSet rs) throws SQLException {
+        assert rs != null;
         return rs.getInt("TRANSFER_ID");
+    }
+    
+    /**
+     * Get the root (filepath) of the delivery
+     *
+     * @param rs
+     * @return
+     * @throws SQLException if something happened that can't be handled
+     */
+    public static Path getRootPath(ResultSet rs) throws SQLException {
+        assert rs != null;
+        return Paths.get(unencode(rs.getString("FILEPATH")));
     }
 
     /**
@@ -115,17 +145,19 @@ public class TblDelivery extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static String getDescription(ResultSet rs) throws SQLException {
-        return rs.getString("DESC");
+        assert rs != null;
+        return unencode(rs.getString("DESC"));
     }
 
     /**
-     * Get the description for a row in a result set.
+     * Get when the delivery was received.
      *
      * @param rs
      * @return
      * @throws SQLException if something happened that can't be handled
      */
     public static String getWhenReceived(ResultSet rs) throws SQLException {
+        assert rs != null;
         return rs.getString("WHEN_RECEIVED");
     }
     
@@ -138,16 +170,19 @@ public class TblDelivery extends SQL {
         StringBuilder sb = new StringBuilder();
         ResultSet rs;
         
-        sb.append("TransferKey DeliveryKey Description WhenReceived\n");
-        rs = query("*", null);
+        sb.append("TransferKey DeliveryKey WhenReceived RootDirectory Desc\n");
+        rs = query("*", null, "TRANSFER_ID");
         while (rs.next()) {
             sb.append(getTransferId(rs));
             sb.append(" ");
             sb.append(getDeliveryId(rs));
             sb.append(" ");
+            sb.append(getWhenReceived(rs));
+            sb.append(" ");
+            sb.append(getRootPath(rs).toString());
+            sb.append(" ");
             sb.append(getDescription(rs));
             sb.append(" ");
-            sb.append(getWhenReceived(rs));
             sb.append("\n");
         }
         return sb.toString();
@@ -162,27 +197,4 @@ public class TblDelivery extends SQL {
         update("drop table if exists DELIVERY");
     }
 
-    /**
-     * Get an SQL TIMESTAMP
-     *
-     * @param ms
-     * @return
-     */
-    private static String sqlDateTime(long ms) {
-        Date d;
-        SimpleDateFormat sdf;
-        TimeZone tz;
-        String s1;
-
-        tz = TimeZone.getDefault();
-        sdf = new SimpleDateFormat("yyyy-MM-dd' 'HH:mm:ssZ");
-        sdf.setTimeZone(tz);
-        if (ms == 0) {
-            d = new Date();
-        } else {
-            d = new Date(ms);
-        }
-        s1 = sdf.format(d);
-        return s1.substring(0, 22) + ":" + s1.substring(22, 24);
-    }
 }

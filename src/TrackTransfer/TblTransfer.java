@@ -17,11 +17,13 @@ import java.util.logging.Logger;
  */
 public class TblTransfer extends SQL {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblTransfer");
+    
+    static final int MAX_DESC_LEN = 100;
 
     static String CREATE_TRANSFER_TABLE
             = "create table TRANSFER ("
             + "TRANSFER_ID integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " // primary key
-            + "DESC varchar(100) NOT NULL" // arbitrary description
+            + "DESC varchar("+MAX_DESC_LEN+") NOT NULL" // arbitrary description
             + ")";
 
     /**
@@ -53,10 +55,12 @@ public class TblTransfer extends SQL {
      */
     public static int add(String desc) throws SQLException {
         StringBuilder sb = new StringBuilder();
+        
+        desc = truncate("Description", desc, MAX_DESC_LEN);
 
         sb.append("insert into TRANSFER (DESC) values (");
         sb.append("'");
-        sb.append(desc);
+        sb.append(encode(desc));
         sb.append("');");
         return addSingleRow(sb.toString(), "TRANSFER_ID");
     }
@@ -68,11 +72,12 @@ public class TblTransfer extends SQL {
      *
      * @param what what columns to be returned in the result set
      * @param where the conditional clause
+     * @param orderBy how to order the results
      * @return a Result Set containing the rows
      * @throws SQLException if something happened that can't be handled
      */
-    public static ResultSet query(String what, String where) throws SQLException {
-        return query("TRANSFER", what, where);
+    public static ResultSet query(String what, String where, String orderBy) throws SQLException {
+        return query("TRANSFER", what, where, orderBy);
     }
 
     /**
@@ -94,7 +99,7 @@ public class TblTransfer extends SQL {
      * @throws SQLException if something happened that can't be handled
      */
     public static String getDescription(ResultSet rs) throws SQLException {
-        return rs.getString("DESC");
+        return unencode(rs.getString("DESC"));
     }
     
         
@@ -108,7 +113,7 @@ public class TblTransfer extends SQL {
         ResultSet rs;
         
         sb.append("TransferKey\tDescription\n");
-        rs = query("*", null);
+        rs = query("*", null, "TRANSFER_ID");
         while (rs.next()) {
             sb.append(getTransferId(rs));
             sb.append(" ");
