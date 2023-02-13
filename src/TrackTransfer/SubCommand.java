@@ -22,10 +22,11 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class SubCommand {
+public abstract class SubCommand {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.SubCommand");
     boolean help;       // true if help has been requested
+    boolean veo;        // true if only considering V2 or V3 VEOs as records
     static final String DB_PREFIX = "jdbc:h2:";
 
     protected SubCommand() {
@@ -102,5 +103,88 @@ public class SubCommand {
      */
     protected void disconnectDB() throws SQLException {
         SQL.disconnect();
+    }
+
+    /**
+     * Do common configuration for all commands.
+     *
+     * @param args
+     * @param usage
+     * @throws AppError
+     */
+    protected void config(String[] args, String usage) throws AppError {
+        int i, j;
+
+        // process remaining command line arguments
+        veo = false;
+        help = false;
+        i = 1;
+        try {
+            while (i < args.length) {
+                switch (args[i].toLowerCase()) {
+                    // if verbose mode...
+                    case "-veo":
+                        veo = true;
+                        i++;
+                        break;
+                    // if verbose mode...
+                    case "-v":
+                        LOG.setLevel(Level.INFO);
+                        i++;
+                        break;
+                    // if debugging...
+                    case "-d":
+                        LOG.setLevel(Level.FINE);
+                        i++;
+                        break;
+                    // write a summary of the command line options to the std out
+                    case "-help":
+                        help = true;
+                        i++;
+                        break;
+                    // otherwise check for command specific options
+                    default:
+                        if ((j = specificConfig(args, i)) == 0) {
+                            throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
+                        }
+                        i += j;
+                }
+            }
+        } catch (ArrayIndexOutOfBoundsException ae) {
+            throw new AppError("Missing argument. Usage: " + usage);
+        }
+    }
+
+    /**
+     * Process command line arguments specific to a command. Passed the array of
+     * command line arguments, and the current position in the array. Returns
+     * the number of arguments consumed (0 = nothing matched)
+     *
+     * @param args command line arguments
+     * @param i position in command line arguments
+     * @return command line arguments consumed
+     * @throws AppError
+     * @throws ArrayIndexOutOfBoundsException
+     */
+    abstract int specificConfig(String[] args, int i) throws AppError, ArrayIndexOutOfBoundsException;
+
+    /**
+     * Give help about the generic command line options
+     */
+    protected void genericHelp() {
+        LOG.info("  -v: verbose mode: give more details about processing");
+        LOG.info("  -d: debug mode: give a lot of details about processing");
+        LOG.info("  -help: print this listing");
+        LOG.info("");
+    }
+
+    protected void genericStatus() {
+        if (LOG.getLevel() == Level.INFO) {
+            LOG.info(" Logging: verbose");
+        } else if (LOG.getLevel() == Level.FINE) {
+            LOG.info(" Logging: debug");
+        } else {
+            LOG.info(" Logging: warnings & errors only");
+        }
     }
 }

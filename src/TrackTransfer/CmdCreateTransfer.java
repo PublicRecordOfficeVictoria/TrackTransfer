@@ -2,6 +2,7 @@ package TrackTransfer;
 
 import VERSCommon.AppError;
 import VERSCommon.AppFatal;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -15,6 +16,7 @@ public class CmdCreateTransfer extends SubCommand {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdCreateTransfer");
     private String database;    // database being connected to (may be null)
     private String desc;        // description of this delivery
+    private String usage = "-db <databaseURL> -desc <text> [-v] [-d] [-help]";
 
     public CmdCreateTransfer() throws AppFatal {
         super();
@@ -22,22 +24,20 @@ public class CmdCreateTransfer extends SubCommand {
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
         int key;
-        
+
         LOG.setLevel(null);
-        config(args);
+        config(args, usage);
 
         // just asked for help?
         if (help) {
             LOG.setLevel(Level.INFO);
             LOG.info("'New transfer' command line arguments:");
             LOG.info(" Mandatory:");
-            LOG.info("  -db <databaseURL>: URL identifying the database");
+            LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
             LOG.info("  -desc <description>: text describing this transfer");
             LOG.info("");
             LOG.info(" Optional:");
-            LOG.info("  -v: verbose mode: give more details about processing");
-            LOG.info("  -d: debug mode: give a lot of details about processing");
-            LOG.info("  -help: print this listing");
+            genericHelp();
             LOG.info("");
             return;
         }
@@ -55,13 +55,7 @@ public class CmdCreateTransfer extends SubCommand {
         LOG.info(" Create a new transfer");
         LOG.log(Level.INFO, " Database: {0}", database);
         LOG.log(Level.INFO, " Description: {0}", desc);
-        if (LOG.getLevel() == Level.INFO) {
-            LOG.info(" Logging: verbose");
-        } else if (LOG.getLevel() == Level.FINE) {
-            LOG.info(" Logging: debug");
-        } else {
-            LOG.info(" Logging: warnings & errors only");
-        }
+        genericStatus();
 
         // connect to the database and create the tables
         database = connectDB(database);
@@ -69,7 +63,7 @@ public class CmdCreateTransfer extends SubCommand {
             TblTransfer.createTable();
         } catch (SQLException sqe) {
             if (sqe.getSQLState().equals("42S01") && sqe.getErrorCode() == 42101) {
-                throw new AppError("Failed CreateTransfer: Transfer has already been created ('"+database+"')");
+                throw new AppError("Failed CreateTransfer: Transfer has already been created ('" + database + "')");
             }
         }
         TblDelivery.createTable();
@@ -77,7 +71,7 @@ public class CmdCreateTransfer extends SubCommand {
         TblEvent.createTable();
         TblInstanceEvent.createTable();
         TblItem.createTable();
-        
+
         key = TblTransfer.add(desc);
         disconnectDB();
 
@@ -86,54 +80,40 @@ public class CmdCreateTransfer extends SubCommand {
         LOG.log(Level.INFO, " Transfer (key={0})", key);
     }
 
-    public void config(String args[]) throws AppError {
-        String usage = "-db <databaseURL> -desc <text> [-v] [-d] [-help]";
-        int i;
+    /**
+     * Process command line arguments specific to this command. Passed the array
+     * of command line arguments, and the current position in the array. Returns
+     * the number of arguments consumed (0 = nothing matched)
+     * 
+     * @param args command line arguments
+     * @param i position in command line arguments
+     * @return command line arguments consumed
+     * @throws AppError
+     * @throws ArrayIndexOutOfBoundsException 
+     */
+    @Override
+    int specificConfig(String[] args, int i) throws AppError, ArrayIndexOutOfBoundsException {
+        int j;
 
-        // process remaining command line arguments
-        i = 1;
-        try {
-            while (i < args.length) {
-                switch (args[i].toLowerCase()) {
-
-                    // if verbose mode...
-                    case "-v":
-                        LOG.setLevel(Level.INFO);
-                        i++;
-                        break;
-
-                    // if debugging...
-                    case "-d":
-                        LOG.setLevel(Level.FINE);
-                        i++;
-                        break;
-
-                    // write a summary of the command line options to the std out
-                    case "-help":
-                        help = true;
-                        i++;
-                        break;
-
-                    // get output directory
-                    case "-db":
-                        i++;
-                        database = args[i];
-                        i++;
-                        break;
-
-                    case "-desc":
-                        i++;
-                        desc = args[i];
-                        i++;
-                        break;
-
-                    // otherwise check to see if it is a common argument
-                    default:
-                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
-                }
-            }
-        } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppError("Missing argument. Usage: " + usage);
+        switch (args[i].toLowerCase()) {
+            // get output directory
+            case "-db":
+                i++;
+                database = args[i];
+                i++;
+                j = 2;
+                break;
+            // description of the items to be annotated
+            case "-desc":
+                i++;
+                desc = args[i];
+                i++;
+                j = 2;
+                break;
+            // otherwise complain
+            default:
+                j = 0;
         }
+        return j;
     }
 }

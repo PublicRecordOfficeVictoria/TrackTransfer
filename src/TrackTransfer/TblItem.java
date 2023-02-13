@@ -121,6 +121,8 @@ public class TblItem extends SQL {
     /**
      * Find an item given an identifier (filename and/or hash). At least one of
      * filename and hash must be present. If both are present, both must match.
+     * We ignore a trailing ".lnk" in the file name - this idendifies a short
+     * cut in Windows.
      *
      * @param filename the filename to look for (may be null)
      * @param hash the hash to look for (may be null)
@@ -129,8 +131,13 @@ public class TblItem extends SQL {
      */
     public static ResultSet findItem(String filename, String hash) throws SQLException {
         ResultSet rs;
+        int i;
 
         assert filename != null || hash != null;
+        
+        if ((i = filename.toLowerCase().lastIndexOf(".lnk")) != -1) {
+            filename = filename.substring(0, i);
+        }
 
         if (filename != null && hash == null) {
             rs = query("*", "FILENAME = '" + encode(filename) + "'", null);

@@ -38,15 +38,16 @@ public class CmdNewDelivery extends SubCommand {
     private int replacesDuplThisDeliveryEvent; // event stating that this instance duplicates an instance in this delivery
     private int notRecordEvent;  // event stating that this instance was judged to be not a record
     private int tooLateEvent;    // event stating that this instance was received after record had had custody accepted
+    private String usage = "[-db <database>] -desc <text> -dir <directory> [-veo]";
 
     public CmdNewDelivery() throws AppFatal {
         super();
     }
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
-        int transferKey, deliveryKey, eventKey;
+        int transferKey, deliveryKey, deliveryEvent;
         ResultSet rs;
-        
+
         noFiles = 0;
         numNotRecords = 0;
         numRecords = 0;
@@ -58,7 +59,7 @@ public class CmdNewDelivery extends SubCommand {
         notRecordEvent = 0;
         tooLateEvent = 0;
 
-        config(args);
+        config(args, usage);
 
         // just asked for help?
         if (help) {
@@ -69,11 +70,10 @@ public class CmdNewDelivery extends SubCommand {
             LOG.info("  -dir <filename>: name of directory holding objects being delivered");
             LOG.info("");
             LOG.info(" Optional:");
-            LOG.info("  -ignore-dups: any duplicate records are to be ignored (default is to replace)");
-            LOG.info("  -db <databaseURL>: URL identifying the database (default 'jdbc:h2:./trackTransfer')");
-            LOG.info("  -v: verbose mode: give more details about processing");
-            LOG.info("  -d: debug mode: give a lot of details about processing");
-            LOG.info("  -help: print this listing");
+            LOG.info("  -ignore-dups: any duplicate records are to be ignored (default is to supersede)");
+            LOG.info("  -veo: items are only files that end in .veo or .veo.zip");
+            LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
+            genericHelp();
             LOG.info("");
             return;
         }
@@ -89,21 +89,20 @@ public class CmdNewDelivery extends SubCommand {
         // say what we are doing
         LOG.info("Requested:");
         LOG.info(" Register a new delivery");
-        LOG.log(Level.INFO, " Database: {0}", database==null?"Derived from .mv.db filename":database);
+        LOG.log(Level.INFO, " Database: {0}", database == null ? "Derived from .mv.db filename" : database);
         LOG.log(Level.INFO, " Description: {0}", desc);
         LOG.log(Level.INFO, " Directory of items: {0}", rootDir.toString());
+        if (veo) {
+            LOG.info(" Only include items with filenames ending in .veo or .veo.zip");
+        } else {
+            LOG.info(" Include all files");
+        }
         if (supersedePrevious) {
             LOG.info(" Any records that duplicate those in previous deliveries will supersede the previous instance");
         } else {
             LOG.info(" Any records that duplicate those in previous deliveries will be ignored as duplicates");
         }
-        if (LOG.getLevel() == Level.INFO) {
-            LOG.info(" Logging: verbose");
-        } else if (LOG.getLevel() == Level.FINE) {
-            LOG.info(" Logging: debug");
-        } else {
-            LOG.info(" Logging: warnings & errors only");
-        }
+        genericStatus();
 
         // check if the root directory is a directory and exists
         if (!rootDir.toFile().exists()) {
@@ -127,10 +126,10 @@ public class CmdNewDelivery extends SubCommand {
         deliveryKey = TblDelivery.add(transferKey, desc, rootDir);
 
         // add the delivery event
-        eventKey = TblEvent.add(desc);
+        deliveryEvent = TblEvent.add(desc);
 
         // process instances in the root directory
-        registerInstances(deliveryKey, desc, rootDir, eventKey);
+        registerInstances(deliveryKey, desc, rootDir, deliveryEvent);
 
         disconnectDB();
 
@@ -138,63 +137,54 @@ public class CmdNewDelivery extends SubCommand {
         LOG.log(Level.INFO, " Delivery added to ''{0}''; found: {1} (records: {2}, not records: {3})", new Object[]{database, noFiles, numRecords, numNotRecords});
         LOG.log(Level.INFO, " Delivery row (key={0})", deliveryKey);
     }
+    
+    /**
+     * Process command line arguments specific to this command. Passed the array
+     * of command line arguments, and the current position in the array. Returns
+     * the number of arguments consumed (0 = nothing matched)
+     * 
+     * @param args command line arguments
+     * @param i position in command line arguments
+     * @return command line arguments consumed
+     * @throws AppError
+     * @throws ArrayIndexOutOfBoundsException 
+     */
+    @Override
+    int specificConfig(String[] args, int i) throws AppError, ArrayIndexOutOfBoundsException {
+        int j;
 
-    public void config(String args[]) throws AppError {
-        String usage = "[-db <databaseURL>] -desc <text> -dir <directory>";
-        int i;
-
-        // process remaining command line arguments
-        i = 1;
-        try {
-            while (i < args.length) {
-                switch (args[i].toLowerCase()) {
-
-                    // if verbose mode...
-                    case "-v":
-                        LOG.setLevel(Level.INFO);
-                        i++;
-                        break;
-                    // if debugging...
-                    case "-d":
-                        LOG.setLevel(Level.FINE);
-                        i++;
-                        break;
-                    // write a summary of the command line options to the std out
-                    case "-help":
-                        help = true;
-                        i++;
-                        break;
-                    // get output directory
-                    case "-db":
-                        i++;
-                        database = args[i];
-                        i++;
-                        break;
-                    // description of the delivery
-                    case "-desc":
-                        i++;
-                        desc = args[i];
-                        i++;
-                        break;
-                    // directory that contains the items in the delivery
-                    case "-dir":
-                        i++;
-                        rootDir = Paths.get(args[i]);
-                        i++;
-                        break;
-                    // directory that contains the items in the delivery
-                    case "-ignore-dups":
-                        i++;
-                        supersedePrevious = false;
-                        break;
-                    // otherwise complain
-                    default:
-                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
-                }
-            }
-        } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppError("Missing argument. Usage: " + usage);
+        switch (args[i].toLowerCase()) {
+            // get output directory
+            case "-db":
+                i++;
+                database = args[i];
+                j = 2;
+                break;
+            // description of the delivery
+            case "-desc":
+                i++;
+                desc = args[i];
+                i++;
+                j = 2;
+                break;
+            // directory that contains the items in the delivery
+            case "-dir":
+                i++;
+                rootDir = Paths.get(args[i]);
+                i++;
+                j = 2;
+                break;
+            // directory that contains the items in the delivery
+            case "-ignore-dups":
+                i++;
+                supersedePrevious = false;
+                j = 1;
+                break;
+            // otherwise complain
+            default:
+                j = 0;
         }
+        return j;
     }
 
     /**
@@ -204,11 +194,11 @@ public class CmdNewDelivery extends SubCommand {
      * @param deliveryKey the delivery this item belongs to
      * @param desc the description of the delivery
      * @param dir the directory being processes
-     * @param eventKey the event describing this delivery
+     * @param deliveryEvent the key of the event documenting the delivery
      * @throws AppFatal something went fatally wrong
      * @throws SQLException a database problem (should never occur)
      */
-    private void registerInstances(int deliveryKey, String desc, Path dir, int eventKey) throws AppFatal, SQLException {
+    private void registerInstances(int deliveryKey, String desc, Path dir, int deliveryEvent) throws AppFatal, SQLException {
 
         // go through the items in the directory
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
@@ -216,12 +206,12 @@ public class CmdNewDelivery extends SubCommand {
 
                 // recurse if the item is a directory
                 if (entry.toFile().isDirectory()) {
-                    registerInstances(deliveryKey, desc, entry, eventKey);
+                    registerInstances(deliveryKey, desc, entry, deliveryEvent);
 
                     // otherwise register the item
                 } else {
                     noFiles++;
-                    registerInstance(entry, deliveryKey, desc, eventKey);
+                    registerInstance(entry, deliveryKey, deliveryEvent);
                 }
             }
         } catch (DirectoryIteratorException | IOException e) {
@@ -234,12 +224,11 @@ public class CmdNewDelivery extends SubCommand {
      *
      * @param entry the instance in the delivery
      * @param deliveryKey the delivery this item belongs to
-     * @param deliveryDesc the description of the delivery
-     * @param eventKey the event describing this delivery
+     * @param deliveryEvent the event documenting the delivery
      * @throws AppFatal something went fatally wrong
      * @throws SQLException a database problem (should never occur)
      */
-    private void registerInstance(Path entry, int deliveryKey, String deliveryDesc, int eventKey) throws AppFatal, SQLException {
+    private void registerInstance(Path entry, int deliveryKey, int deliveryEvent) throws AppFatal, SQLException {
         int instanceKey, itemKey, prevInstanceKey;
         String filename;
         boolean isRecord, isFinalised;
@@ -250,17 +239,18 @@ public class CmdNewDelivery extends SubCommand {
 
         // determine if this instance is not a record
         isRecord = true;
-        /* ignore this for the moment to assist in initial testing
-        if (!filename.toLowerCase().endsWith(".veo.zip") && !filename.toLowerCase().endsWith(".veo")) {
+        if (veo && !filename.toLowerCase().endsWith(".veo.zip") && !filename.toLowerCase().endsWith(".veo")) {
             LOG.log(Level.FINE, "Eliminated ignoreNotRecord file ''{0}''", entry.toString());
             numNotRecords++;
             isRecord = false;
         }
-         */
 
         // add instance to Instance table
         instanceKey = TblInstance.add(deliveryKey, 0, entry.toString(), false, 0);
         assert instanceKey != 0;
+        
+        // add delivery event to the new instance
+        TblInstanceEvent.add(instanceKey, deliveryEvent);
 
         // if we have already seen this item, this new instance must either
         // supersede or duplicate an earlier instance (duplicates may either be
@@ -297,7 +287,7 @@ public class CmdNewDelivery extends SubCommand {
                     }
                     assert replacesDuplThisDeliveryEvent != 0;
                     TblInstanceEvent.add(instanceKey, replacesDuplThisDeliveryEvent);
-                    LOG.log(Level.WARNING, "Record ''{0}'' ({1}) already appears in this delivery", new Object[]{filename, entry.toString()});
+                    LOG.log(Level.WARNING, "Item ''{0}'' ({1}) already appears in this delivery", new Object[]{filename, entry.toString()});
                 } else if (!supersedePrevious) { // duplicate in a previous delivery
                     TblInstance.setIsDuplicated(prevInstanceKey);
                     if (replacedByDuplNewDeliveryEvent == 0) {
@@ -310,7 +300,7 @@ public class CmdNewDelivery extends SubCommand {
                     }
                     assert replacesDuplPrevDeliveryEvent != 0;
                     TblInstanceEvent.add(instanceKey, replacesDuplPrevDeliveryEvent);
-                    LOG.log(Level.WARNING, "Record ''{0}'' ({1}) duplicated instance in previous delivery", new Object[]{filename, entry.toString()});
+                    LOG.log(Level.WARNING, "Instance ''{0}'' ({1}) duplicated instance in previous delivery", new Object[]{filename, entry.toString()});
                 } else { //supersedes previous instance
                     TblInstance.setIsSuperseded(prevInstanceKey);
                     if (supersededEvent == 0) {
@@ -323,8 +313,10 @@ public class CmdNewDelivery extends SubCommand {
                     }
                     assert supersedesEvent != 0;
                     TblInstanceEvent.add(instanceKey, supersedesEvent);
-                    LOG.log(Level.WARNING, "Record ''{0}'' ({1}) superseded instance in previous delivery", new Object[]{filename, entry.toString()});
+                    LOG.log(Level.WARNING, "Instance ''{0}'' ({1}) superseded instance in previous delivery", new Object[]{filename, entry.toString()});
                 }
+            } else {
+                LOG.log(Level.FINE, "Finalised item ''{0}'' ({1}) received new instance", new Object[]{filename, entry.toString()});
             }
         } else { // seen for the first time, create the item
             LOG.log(Level.FINE, "Created item ''{0}'' from instance ''{1}''", new Object[]{filename, entry.toString()});
@@ -349,11 +341,11 @@ public class CmdNewDelivery extends SubCommand {
             TblItem.setActiveInstance(itemKey, instanceKey);
         } else {
             if (tooLateEvent == 0) {
-                tooLateEvent = TblEvent.add("Record resubmitted in delivery " + deliveryKey + " but custody has already been accepted");
+                tooLateEvent = TblEvent.add("Item resubmitted in delivery " + deliveryKey + " but item has been finalised (marked as custody-accepted or abandoned)");
             }
             assert tooLateEvent != 0;
             TblInstanceEvent.add(instanceKey, tooLateEvent);
-            LOG.log(Level.WARNING, "Record ''{0}'' ({1}) resubmitted in delivery, but custody has already been accepted", new Object[]{filename, entry.toString()});
+            LOG.log(Level.WARNING, "Item ''{0}'' ({1}) resubmitted in delivery, but item has been finalised (marked as custody-accepted or abandoned)", new Object[]{filename, entry.toString()});
         }
     }
 }

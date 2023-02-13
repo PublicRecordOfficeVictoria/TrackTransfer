@@ -20,13 +20,15 @@ import java.util.logging.Logger;
  * @author Andrew
  */
 public class CmdAnnotate extends SubCommand {
+
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
     private String database;    // database being connected to (may be null)
     private String desc;        // description of the event
     private Path rootDir;       // root directory containing the objects being annotated
     private int count;          // number of items annotated
     private String status;      // status of the items
-    boolean isFinalised;        // true if the status implies that the item has been finalised (i.e. custody accepted or abandoned)
+    private boolean isFinalised;// true if the status implies that the item has been finalised (i.e. custody accepted or abandoned)
+    private String usage = "[-db <database>] [-desc <text>] [-status <text>] [-final] [-abandon] -dir <directory> [-v] [-d] [-help]";
 
     public CmdAnnotate() throws AppFatal {
         super();
@@ -39,7 +41,7 @@ public class CmdAnnotate extends SubCommand {
         status = null;
         isFinalised = false;
 
-        config(args);
+        config(args, usage);
 
         // just asked for help?
         if (help) {
@@ -49,12 +51,10 @@ public class CmdAnnotate extends SubCommand {
             LOG.info("  -dir <filename>: name of directory holding objects being annotated");
             LOG.info("");
             LOG.info(" Optional:");
-            LOG.info("  -db <databaseURL>: URL identifying the database (default 'jdbc:h2:./trackTransfer')");
+            LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
             LOG.info("  -status <status>: String giving new status (special values 'abandoned' & 'custody-accepted'");
             LOG.info("  -desc <description>: annotation text");
-            LOG.info("  -v: verbose mode: give more details about processing");
-            LOG.info("  -d: debug mode: give a lot of details about processing");
-            LOG.info("  -help: print this listing");
+            genericHelp();
             LOG.info("");
             LOG.info("One or both of -status and -desc must be present");
             return;
@@ -87,7 +87,7 @@ public class CmdAnnotate extends SubCommand {
         // say what we are doing
         LOG.info("Requested:");
         LOG.info(" Annotate items");
-        LOG.log(Level.INFO, " Database: {0}", database==null?"Derived from .mv.db filename":database);
+        LOG.log(Level.INFO, " Database: {0}", database == null ? "Derived from .mv.db filename" : database);
         LOG.log(Level.INFO, " Annotationn: {0}", desc);
         if (status != null) {
             LOG.log(Level.INFO, " Status: ''{0}''", status);
@@ -98,13 +98,7 @@ public class CmdAnnotate extends SubCommand {
             LOG.log(Level.INFO, " Item automatically finalised (status = custody-accepted or abandoned");
         }
         LOG.log(Level.INFO, " Directory of items: {0}", rootDir.toString());
-        if (LOG.getLevel() == Level.INFO) {
-            LOG.info(" Logging: verbose");
-        } else if (LOG.getLevel() == Level.FINE) {
-            LOG.info(" Logging: debug");
-        } else {
-            LOG.info(" Logging: warnings & errors only");
-        }
+        genericStatus();
 
         // check if the root directory is a directory and exists
         if (!rootDir.toFile().exists()) {
@@ -129,72 +123,49 @@ public class CmdAnnotate extends SubCommand {
         LOG.log(Level.INFO, " {0} items annotated in ({1}) with event {2}", new Object[]{count, database, eventKey});
     }
 
-    public void config(String args[]) throws AppError {
-        String usage = "[-db <databaseURL>] [-desc <text>] [-status <text>] [-final] [-abandon] -dir <directory> [-v] [-d] [-help]";
-        int i;
+    @Override
+    int specificConfig(String[] args, int i) throws AppError, ArrayIndexOutOfBoundsException {
+        int j;
 
-        // process remaining command line arguments
-        i = 1;
-        try {
-            while (i < args.length) {
-                switch (args[i].toLowerCase()) {
-                    // if verbose mode...
-                    case "-v":
-                        LOG.setLevel(Level.INFO);
-                        i++;
-                        break;
-                    // if debugging...
-                    case "-d":
-                        LOG.setLevel(Level.FINE);
-                        i++;
-                        break;
-                    // write a summary of the command line options to the std out
-                    case "-help":
-                        help = true;
-                        i++;
-                        break;
-                    // get output directory
-                    case "-db":
-                        i++;
-                        database = args[i];
-                        i++;
-                        break;
-                    // description of the items to be annotated
-                    case "-desc":
-                        i++;
-                        desc = args[i];
-                        i++;
-                        break;
-                    // status of the items to be annotated
-                    case "-status":
-                        i++;
-                        status = args[i].replace("'", "''");
-                        i++;
-                        break;
-                    // custody has been accepted of the items
-                    case "-custody-accepted":
-                        i++;
-                        status = "Custody-Accepted";
-                        break;
-                    // items have been abandoned
-                    case "-abandoned":
-                        i++;
-                        status = "Abandoned";
-                        break;
-                    // directory that contains the items in the delivery
-                    case "-dir":
-                        i++;
-                        rootDir = Paths.get(args[i]);
-                        i++;
-                        break;
-                    // otherwise check to see if it is a common argument
-                    default:
-                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
-                }
-            }
-        } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppError("Missing argument. Usage: " + usage);
+        switch (args[i].toLowerCase()) {
+            // description of the items to be annotated
+            case "-desc":
+                i++;
+                desc = args[i];
+                i++;
+                j = 2;
+                break;
+            // status of the items to be annotated
+            case "-status":
+                i++;
+                status = args[i].replace("'", "''");
+                i++;
+                j = 2;
+                break;
+            // custody has been accepted of the items
+            case "-custody-accepted":
+                i++;
+                status = "Custody-Accepted";
+                j = 1;
+                break;
+            // items have been abandoned
+            case "-abandoned":
+                i++;
+                status = "Abandoned";
+                j = 1;
+                break;
+            // directory that contains the items in the delivery
+            case "-dir":
+                i++;
+                rootDir = Paths.get(args[i]);
+                i++;
+                j = 2;
+                break;
+            // otherwise complain
+            default:
+                j = 0;
         }
+        return j;
     }
 
     /**

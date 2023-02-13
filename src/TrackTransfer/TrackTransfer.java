@@ -190,6 +190,7 @@ public class TrackTransfer {
         }
         SQL.connect(args[1]);
         LOG.info(TblTransfer.printTable());
+        LOG.info(TblItem.printTable());
         LOG.info(TblDelivery.printTable());
         LOG.info(TblInstance.printTable());
         LOG.info(TblEvent.printTable());

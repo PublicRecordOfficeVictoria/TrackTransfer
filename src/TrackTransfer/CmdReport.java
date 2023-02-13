@@ -20,10 +20,12 @@ import java.util.logging.Logger;
  * @author Andrew
  */
 public class CmdReport extends SubCommand {
+
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
     private String database;    // database being connected to (may be null)
     private Path outputFile;       // report file
     private Reports reportReq;      // report requested
+    private String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
 
     public CmdReport() throws AppFatal {
         super();
@@ -43,12 +45,12 @@ public class CmdReport extends SubCommand {
 
         reportReq = Reports.COMPLETE;
 
-        config(args);
+        config(args, usage);
 
         // just asked for help?
         if (help) {
             LOG.setLevel(Level.INFO);
-            LOG.info("'Annotate' command line arguments:");
+            LOG.info("'Report' command line arguments:");
             LOG.info(" Reports available:");
             LOG.info("  -complete: full report of all the items and instances (default)");
             LOG.info("  -custody-accepted: report of all items for which custody has been accepted");
@@ -59,11 +61,8 @@ public class CmdReport extends SubCommand {
             LOG.info("  -o <filename>: output file for the report");
             LOG.info("");
             LOG.info(" Optional:");
-            LOG.info("  -db <databaseURL>: URL identifying the database (default 'jdbc:h2:./trackTransfer')");
-            LOG.info("  -v: verbose mode: give more details about processing");
-            LOG.info("  -d: debug mode: give a lot of details about processing");
-            LOG.info("  -help: print this listing");
-            LOG.info("");
+            LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
+            genericHelp();
             return;
         }
 
@@ -91,15 +90,9 @@ public class CmdReport extends SubCommand {
                 LOG.info(" Generate Unknown report");
                 break;
         }
-        LOG.log(Level.INFO, " Database: {0}", database==null?"Derived from .mv.db filename":database);
+        LOG.log(Level.INFO, " Database: {0}", database == null ? "Derived from .mv.db filename" : database);
         LOG.log(Level.INFO, " Report: {0}", outputFile.toString());
-        if (LOG.getLevel() == Level.INFO) {
-            LOG.info(" Logging: verbose");
-        } else if (LOG.getLevel() == Level.FINE) {
-            LOG.info(" Logging: debug");
-        } else {
-            LOG.info(" Logging: warnings & errors only");
-        }
+        genericStatus();
 
         // open the output file for writing
         try {
@@ -149,80 +142,74 @@ public class CmdReport extends SubCommand {
         LOG.log(Level.INFO, "Report generated from ({0}) to ''{1}''", new Object[]{database, outputFile.toString()});
     }
 
-    public void config(String args[]) throws AppError {
-        String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
-        int i;
+    /**
+     * Process command line arguments specific to this command. Passed the array
+     * of command line arguments, and the current position in the array. Returns
+     * the number of arguments consumed (0 = nothing matched)
+     *
+     * @param args command line arguments
+     * @param i position in command line arguments
+     * @return command line arguments consumed
+     * @throws AppError
+     * @throws ArrayIndexOutOfBoundsException
+     */
+    @Override
+    int specificConfig(String[] args, int i) throws AppError, ArrayIndexOutOfBoundsException {
+        int j;
 
-        // process remaining command line arguments
-        i = 1;
-        try {
-            while (i < args.length) {
-                switch (args[i].toLowerCase()) {
-
-                    // if verbose mode...
-                    case "-v":
-                        LOG.setLevel(Level.INFO);
-                        i++;
-                        break;
-                    // if debugging...
-                    case "-d":
-                        LOG.setLevel(Level.FINE);
-                        i++;
-                        break;
-                    // write a summary of the command line options to the std out
-                    case "-help":
-                        help = true;
-                        i++;
-                        break;
-                    // get output directory
-                    case "-db":
-                        i++;
-                        database = args[i];
-                        i++;
-                        break;
-                    // output file
-                    case "-o":
-                        i++;
-                        outputFile = Paths.get(args[i]);
-                        i++;
-                        break;
-                    // complete report of all items/instances/events
-                    case "-complete":
-                        reportReq = Reports.COMPLETE;
-                        i++;
-                        break;
-                    // report of all items abandoned
-                    case "-abandoned":
-                        reportReq = Reports.ABANDONED;
-                        i++;
-                        break;
-                    // report of all items for which custody was accepted
-                    case "-custody-accepted":
-                        reportReq = Reports.CUSTODY_ACCEPTED;
-                        i++;
-                        break;
-                    // complete report of all items that are incomplete
-                    case "-incomplete":
-                        reportReq = Reports.INCOMPLETE;
-                        i++;
-                        break;
-                    // otherwise check to see if it is a common argument
-                    default:
-                        throw new AppError("Unrecognised argument '" + args[i] + "'. Usage: " + usage);
-                }
-            }
-        } catch (ArrayIndexOutOfBoundsException ae) {
-            throw new AppError("Missing argument. Usage: " + usage);
+        switch (args[i].toLowerCase()) {
+            // get output directory
+            case "-db":
+                i++;
+                database = args[i];
+                i++;
+                j = 2;
+                break;
+            // output file
+            case "-o":
+                i++;
+                outputFile = Paths.get(args[i]);
+                i++;
+                j = 2;
+                break;
+            // complete report of all items/instances/events
+            case "-complete":
+                reportReq = Reports.COMPLETE;
+                i++;
+                j = 1;
+                break;
+            // report of all items abandoned
+            case "-abandoned":
+                reportReq = Reports.ABANDONED;
+                i++;
+                j = 1;
+                break;
+            // report of all items for which custody was accepted
+            case "-custody-accepted":
+                reportReq = Reports.CUSTODY_ACCEPTED;
+                i++;
+                j = 1;
+                break;
+            // complete report of all items that are incomplete
+            case "-incomplete":
+                reportReq = Reports.INCOMPLETE;
+                i++;
+                j = 1;
+                break;
+            // otherwise complain
+            default:
+                j = 0;
         }
+        return j;
     }
 
     /**
-     * Generate a complete report of all items received, all instances for
-     * each item, and all events for each instance.
-     * 
+     * Generate a complete report of all items received, all instances for each
+     * item, and all events for each instance.
+     *
      * @param w
      * @throws SQLException
-     * @throws IOException 
+     * @throws IOException
      */
     private void completeReport(Writer w) throws SQLException, IOException {
         int itemKey, instanceKey;
@@ -232,7 +219,7 @@ public class CmdReport extends SubCommand {
         w.append("COMPLETE REPORT (all Items/Instances/Events)\n");
         w.append("Run \n");
         w.append("\n");
-        
+
         // go through the items
         i = 0;
         items = TblItem.query("*", null, "FILENAME");
@@ -264,15 +251,15 @@ public class CmdReport extends SubCommand {
             }
         }
     }
-    
+
     private void custodyAcceptedReport(Writer w) throws SQLException, IOException {
         ResultSet items;
         int i;
-        
+
         w.append("Custody Accepted report\n");
         w.append("Run \n");
         w.append("\n");
-        
+
         // go through the items
         i = 0;
         items = TblItem.query("*", "STATUS='Custody-Accepted'", "FILENAME");
@@ -285,15 +272,15 @@ public class CmdReport extends SubCommand {
             w.append("\n");
         }
     }
-    
+
     private void abandonedReport(Writer w) throws SQLException, IOException {
         ResultSet items;
         int i;
-        
+
         w.append("Items abandoned report\n");
         w.append("Run \n");
         w.append("\n");
-        
+
         // go through the items
         i = 0;
         items = TblItem.query("*", "STATUS='Abandoned'", "FILENAME");
@@ -305,17 +292,17 @@ public class CmdReport extends SubCommand {
             w.append(TblItem.reportItem(items));
             w.append("\n");
         }
-        
+
     }
-    
+
     private void incompleteReport(Writer w) throws SQLException, IOException {
         ResultSet items;
         int i;
-        
+
         w.append("Items unfinished report\n");
         w.append("Run \n");
         w.append("\n");
-        
+
         // go through the items
         i = 0;
         items = TblItem.query("*", "IS_FINALISED=FALSE", "FILENAME");
@@ -327,6 +314,6 @@ public class CmdReport extends SubCommand {
             w.append(TblItem.reportItem(items));
             w.append("\n");
         }
-        
+
     }
 }
