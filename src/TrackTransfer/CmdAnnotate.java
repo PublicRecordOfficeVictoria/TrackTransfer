@@ -28,7 +28,7 @@ public class CmdAnnotate extends SubCommand {
     private int count;          // number of items annotated
     private String status;      // status of the items
     private boolean isFinalised;// true if the status implies that the item has been finalised (i.e. custody accepted or abandoned)
-    private String usage = "[-db <database>] [-desc <text>] [-status <text>] [-final] [-abandon] -dir <directory> [-v] [-d] [-help]";
+    private String usage = "[-db <database>] [-desc <text>] [-status <text>] [-custody-accepted] [-abandoned] -dir <directory> [-v] [-d] [-help]";
 
     public CmdAnnotate() throws AppFatal {
         super();
@@ -54,6 +54,8 @@ public class CmdAnnotate extends SubCommand {
             LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
             LOG.info("  -status <status>: String giving new status (special values 'abandoned' & 'custody-accepted'");
             LOG.info("  -desc <description>: annotation text");
+            LOG.info("  -custody-accepted: equivalent to '-status Custody-Accepted'");
+            LOG.info("  -abandoned: equivalent to '-status Abandoned'");
             genericHelp();
             LOG.info("");
             LOG.info("One or both of -status and -desc must be present");
@@ -73,7 +75,7 @@ public class CmdAnnotate extends SubCommand {
                 case "custody-accepted":
                 case "abandoned":
                     isFinalised = true;
-                    desc = desc + "& item automatically finalised";
+                    desc = desc + " & item automatically finalised";
                     break;
                 default:
                     isFinalised = false;
@@ -178,9 +180,6 @@ public class CmdAnnotate extends SubCommand {
      * @throws SQLException a database problem (should never occur)
      */
     private void annotateItems(Path dir, int eventKey) throws AppFatal, SQLException {
-        int itemKey, instanceKey;
-        ResultSet rsItem;
-        String s1;
 
         // go through the items in the directory
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
@@ -192,30 +191,47 @@ public class CmdAnnotate extends SubCommand {
 
                     // otherwise change the status and/or description   
                 } else {
-
-                    // eliminate quote characters as this causes problems with SQL
-                    s1 = getFileName(entry);
-
-                    // if item exist annotate it, otherwise complain
-                    rsItem = TblItem.findItem(s1, null);
-                    if (rsItem.next()) {
-                        itemKey = TblItem.getItemId(rsItem);
-                        assert itemKey != 0;
-                        if (status != null) {
-                            TblItem.setStatus(itemKey, status, isFinalised);
-                        }
-                        instanceKey = TblItem.getActiveInstanceId(rsItem);
-                        assert instanceKey != 0;
-                        TblInstanceEvent.add(instanceKey, eventKey);
+                    if (annotateItem(getFileName(entry), eventKey, status, isFinalised)) {
                         count++;
-                        LOG.log(Level.FINE, "Annotated ''{0}''", new Object[]{s1});
-                    } else {
-                        LOG.log(Level.WARNING, "Failed annotating ''{0}'' as it was not in the database", new Object[]{s1});
                     }
                 }
             }
         } catch (DirectoryIteratorException | IOException e) {
             throw new AppFatal(e.getMessage());
+        }
+    }
+
+    /**
+     * Annotate an item.
+     *
+     * @param itemName the name of the item being annotated
+     * @param eventKey the event describing this annotation
+     * @param status if not null, the current status of the Item
+     * @param isFinalised true if item is finalised
+     * @return true if annotation succeeded
+     * @throws AppFatal something went fatally wrong
+     * @throws SQLException a database problem (should never occur)
+     */
+    public static boolean annotateItem(String itemName, int eventKey, String status, boolean isFinalised)throws AppFatal, SQLException {
+        int itemKey, instanceKey;
+        ResultSet rsItem;
+
+        // if item exist annotate it, otherwise complain
+        rsItem = TblItem.findItem(itemName, null);
+        if (rsItem.next()) {
+            itemKey = TblItem.getItemId(rsItem);
+            assert itemKey != 0;
+            if (status != null) {
+                TblItem.setStatus(itemKey, status, isFinalised);
+            }
+            instanceKey = TblItem.getActiveInstanceId(rsItem);
+            assert instanceKey != 0;
+            TblInstanceEvent.add(instanceKey, eventKey);
+            LOG.log(Level.FINE, "Annotated ''{0}''", new Object[]{itemName});
+            return true;
+        } else {
+            LOG.log(Level.WARNING, "Failed annotating ''{0}'' as it was not in the database", new Object[]{itemName});
+            return false;
         }
     }
 

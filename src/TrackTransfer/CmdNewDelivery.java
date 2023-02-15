@@ -320,7 +320,7 @@ public class CmdNewDelivery extends SubCommand {
             }
         } else { // seen for the first time, create the item
             LOG.log(Level.FINE, "Created item ''{0}'' from instance ''{1}''", new Object[]{filename, entry.toString()});
-            itemKey = TblItem.add(filename, null, null, isRecord, false, "Status", instanceKey);
+            itemKey = TblItem.add(filename, null, null, isRecord, false, "Processing", instanceKey);
             isFinalised = false;
             if (newItemEvent == 0) {
                 newItemEvent = TblEvent.add("Received for the first time in a delivery (" + desc + ")");

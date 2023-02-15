@@ -40,10 +40,11 @@ public class TrackTransfer {
      * <pre>
      * 20230127   0.1 Split Item and Instance
      * 20230206   0.2 Basic funtionality working
+     * 20230215   0.3 Added AnnotateFromFile command
      * </pre>
      */
     static String version() {
-        return ("0.2");
+        return ("0.3");
     }
 
     static String copyright = "Copyright 2022 Public Record Office Victoria";
@@ -87,7 +88,7 @@ public class TrackTransfer {
     }
 
     private void doCommand(String args[]) throws AppFatal, AppError, SQLException {
-        String usage = "'newTransfer', 'newDelivery', 'annotate', 'printTables', 'input', 'dropDatabase', or 'help'";
+        String usage = "'newTransfer', 'newDelivery', 'annotate', 'input', 'fromFile', 'report', dropDatabase', 'printTables', or 'help'";
 
         // sanity check...
         if (args.length < 1) {
@@ -125,6 +126,10 @@ public class TrackTransfer {
                 CmdAnnotate a = new CmdAnnotate();
                 a.doIt(args);
                 break;
+            case "annotatefromfile":
+                CmdAnnotateFromFile ff = new CmdAnnotateFromFile();
+                ff.doIt(args);
+                break;
             case "report":
                 CmdReport cr = new CmdReport();
                 cr.doIt(args);
@@ -145,6 +150,14 @@ public class TrackTransfer {
         }
     }
 
+    /**
+     * Read a control file containing Track Transfer commands, one per line. The
+     * tokens are split on spaces, except spaces inside pairs of double quotes.
+     *
+     * @param args command line arguments
+     * @throws AppFatal
+     * @throws SQLException
+     */
     private void processFile(String args[]) throws AppFatal, SQLException {
         Path p;
         FileInputStream fis;     // source of control file to build VEOs
@@ -152,6 +165,7 @@ public class TrackTransfer {
         BufferedReader br;
         String line;
         String[] tokens;
+        int i;
 
         // final argument is the file name
         if (args.length < 2 || args[1] == null) {
@@ -167,6 +181,14 @@ public class TrackTransfer {
 
             while ((line = br.readLine()) != null) {
                 tokens = line.split("\\s(?=(([^\"]*\"){2})*[^\"]*$)\\s*");
+                for (i = 0; i < tokens.length; i++) {
+                    if (tokens[i].startsWith("\"")) {
+                        tokens[i] = tokens[i].substring(1);
+                    }
+                    if (tokens[i].endsWith("\"")) {
+                        tokens[i] = tokens[i].substring(0, tokens[i].length() - 1);
+                    }
+                }
                 try {
                     doCommand(tokens);
                 } catch (AppError ae) {
@@ -183,6 +205,14 @@ public class TrackTransfer {
         }
     }
 
+    /**
+     * Print out the contents of the tables. Mainly for debugging.
+     *
+     * @param args
+     * @throws AppFatal
+     * @throws AppError
+     * @throws SQLException
+     */
     private void printTables(String args[]) throws AppFatal, AppError, SQLException {
         // final argument is the database name
         if (args.length < 2 || args[1] == null) {
@@ -232,6 +262,8 @@ public class TrackTransfer {
     }
 
     /**
+     * Main program...
+     *
      * @param args the command line arguments
      */
     public static void main(String[] args) {

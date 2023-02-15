@@ -131,7 +131,7 @@ public class TblEvent extends SQL {
     public static String reportEvent(ResultSet rs) throws SQLException {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("Event: '");
+        sb.append("Event: ");
         sb.append(TblEvent.getWhenReceived(rs));
         sb.append(" ");
         sb.append(TblEvent.getDescription(rs));
