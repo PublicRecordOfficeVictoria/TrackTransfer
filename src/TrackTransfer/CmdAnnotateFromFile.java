@@ -37,7 +37,7 @@ public class CmdAnnotateFromFile extends SubCommand {
     private int count;          // number of items annotated
     private String status;      // status of the items
     private boolean isFinalised;// true if the status implies that the item has been finalised (i.e. custody accepted or abandoned)
-    private String usage = "[-db <database>] [-skip <count>] [-csv] [-tsv] [-pattern <pattern>] [-desc <text>] [-status <text>] [-i] file [-v] [-d] [-help]";
+    private String usage = "[-db <database>] [-skip <count>] [-csv] [-tsv] [-pattern <pattern>] itemcol <column> [-desc <text>] [-status <text>] [-i] file [-v] [-d] [-help]";
 
     /**
      * Private class that stores a pattern to be matched against lines in files
@@ -145,7 +145,7 @@ public class CmdAnnotateFromFile extends SubCommand {
             LOG.info("'LoadFile' command line arguments:");
             LOG.info(" Mandatory:");
             LOG.info("  -in <filename>: name of file containing the filenames");
-            LOG.info("  -filename <column>: column containing filename (Item name). First column = 0");
+            LOG.info("  -itemcol <column>: column containing filename (Item name). First column = 0");
             LOG.info("");
             LOG.info(" Optional:");
             LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
@@ -306,12 +306,12 @@ public class CmdAnnotateFromFile extends SubCommand {
                 j = 2;
                 break;
             // column in which to find the file name
-            case "-filename":
+            case "-itemcol":
                 i++;
                 try {
                     fileColumn = Integer.parseInt(args[i]);
                 } catch (NumberFormatException nfe) {
-                    throw new AppError("Failed converting file name column to an integer: " + nfe.getMessage());
+                    throw new AppError("Failed converting item column to an integer: " + nfe.getMessage());
                 }
                 i++;
                 j = 2;
