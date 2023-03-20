@@ -15,10 +15,8 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class TblTransfer extends SQL {
+public class TblTransfer extends SQLTable {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblTransfer");
-    
-    static final int MAX_DESC_LEN = 100;
 
     static String CREATE_TRANSFER_TABLE
             = "create table TRANSFER ("

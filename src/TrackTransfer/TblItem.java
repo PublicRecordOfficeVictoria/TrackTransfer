@@ -23,7 +23,7 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class TblItem extends SQL {
+public class TblItem extends SQLTable {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblItem");
 
@@ -134,7 +134,7 @@ public class TblItem extends SQL {
         int i;
 
         assert filename != null || hash != null;
-        
+
         if ((i = filename.toLowerCase().lastIndexOf(".lnk")) != -1) {
             filename = filename.substring(0, i);
         }
@@ -393,6 +393,34 @@ public class TblItem extends SQL {
         sb.append(")");
 
         return sb.toString();
+    }
+
+    /**
+     * Return a string describing this item for a report
+     *
+     * @param rs
+     * @return
+     * @throws java.sql.SQLException
+     */
+    public static String[] tableOut(ResultSet rs) throws SQLException {
+        String[] s = new String[3];
+
+        if (rs == null) {
+            s[0] = "Item";
+            s[1] = "Status";
+            s[2] = "Keyword";
+        } else {
+            s[0] = TblItem.getFilename(rs);
+            if (TblItem.isFinalised(rs)) {
+                s[1] = "FINALISED ";
+            } else if (!TblItem.isRecord(rs)) {
+                s[1] = "NOT A RECORD ";
+            } else {
+                s[1] = "PROCESSING ";
+            }
+            s[2] = TblItem.getStatus(rs);
+        }
+        return s;
     }
 
     /**

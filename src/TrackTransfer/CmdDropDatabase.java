@@ -10,13 +10,13 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class CmdDropDatabase extends SubCommand {
+public class CmdDropDatabase extends Command {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdDropDatabase");
-    private String database;    // database being connected to (may be null)
-    private String usage = "-db <database> [-v] [-d] [-help]";
+    private final String usage;
 
     public CmdDropDatabase() throws AppFatal {
         super();
+        usage = "-db <database> [-v] [-d] [-help]";
     }
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
@@ -47,7 +47,7 @@ public class CmdDropDatabase extends SubCommand {
         genericStatus();
 
         // connect to the database and drop the tables
-        database = connectDB(database);
+        connectDB();
         TblItem.dropTable();
         TblInstanceEvent.dropTable();
         TblEvent.dropTable();
@@ -73,20 +73,6 @@ public class CmdDropDatabase extends SubCommand {
      */
     @Override
     int specificConfig(String[] args, int i) throws AppError, ArrayIndexOutOfBoundsException {
-        int j;
-
-        switch (args[i].toLowerCase()) {
-            // get output directory
-            case "-db":
-                i++;
-                database = args[i];
-                i++;
-                j = 2;
-                break;
-            // otherwise complain
-            default:
-                j = 0;
-        }
-        return j;
+        return 0;
     }
 }

@@ -19,13 +19,13 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class CmdReport extends SubCommand {
+public class CmdReport extends Command {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
-    private String database;    // database being connected to (may be null)
-    private Path outputFile;       // report file
+    private Path outputFile;        // report file
     private Reports reportReq;      // report requested
-    private String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
+    private Report.ReportType format;      // format of requested report
+    private final String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
 
     public CmdReport() throws AppFatal {
         super();
@@ -39,11 +39,10 @@ public class CmdReport extends SubCommand {
     }
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
-        FileOutputStream fos;
-        OutputStreamWriter osw;
-        BufferedWriter bw;
+        Report report;
 
         reportReq = Reports.COMPLETE;
+        format = Report.ReportType.TEXT;
 
         config(args, usage);
 
@@ -62,6 +61,8 @@ public class CmdReport extends SubCommand {
             LOG.info("");
             LOG.info(" Optional:");
             LOG.info("  -db <database>: Database name (default based on .mv.db file in current working directory)");
+            LOG.info("  -tsv: Generate report as a TSV file (default is plain text)");
+            LOG.info("  -csv: Generate report as a CSV file (default is plain text)");
             genericHelp();
             return;
         }
@@ -92,17 +93,27 @@ public class CmdReport extends SubCommand {
         }
         LOG.log(Level.INFO, " Database: {0}", database == null ? "Derived from .mv.db filename" : database);
         LOG.log(Level.INFO, " Report: {0}", outputFile.toString());
+        switch (format) {
+            case TEXT:
+                LOG.info(" Report format: plain text");
+                break;
+            case CSV:
+                LOG.info(" Report format: CSV");
+                break;
+            case TSV:
+                LOG.info(" Report format: TSV");
+                break;
+            default:
+                LOG.info(" Report format: unknown");
+                break;
+        }
         genericStatus();
 
         // open the output file for writing
         try {
-            fos = new FileOutputStream(outputFile.toFile());
-            osw = new OutputStreamWriter(fos, "UTF-8");
-            bw = new BufferedWriter(osw);
-            bw.append("Report of all items\n\n");
 
             // connect to the database and create the tables
-            database = connectDB(database);
+            connectDB();
 
             //System.out.println(TblItem.printTable());
             //System.out.println(TblInstance.printTable());
@@ -110,16 +121,20 @@ public class CmdReport extends SubCommand {
             //System.out.println(TblEvent.printTable());
             switch (reportReq) {
                 case COMPLETE:
-                    completeReport(bw);
+                    report = new RptComplete();
+                    ((RptComplete) report).generate(outputFile);
                     break;
                 case CUSTODY_ACCEPTED:
-                    custodyAcceptedReport(bw);
+                    report = new RptOnItems();
+                    ((RptOnItems) report).generate(outputFile, "Custody Accepted", "STATUS='Custody-Accepted'", "FILENAME");
                     break;
                 case ABANDONED:
-                    abandonedReport(bw);
+                    report = new RptOnItems();
+                    ((RptOnItems) report).generate(outputFile, "Items Abandonded", "STATUS='Abandoned'", "FILENAME");
                     break;
                 case INCOMPLETE:
-                    incompleteReport(bw);
+                    report = new RptOnItems();
+                    ((RptOnItems) report).generate(outputFile, "Items for which processing is incomplete", "IS_FINALISED=FALSE", "FILENAME");
                     break;
                 default:
                     LOG.info(" Generate Unknown report");
@@ -128,12 +143,6 @@ public class CmdReport extends SubCommand {
 
             // for each item, list the events
             disconnectDB();
-
-            bw.append("End of Report");
-
-            bw.close();
-            osw.close();
-            fos.close();
         } catch (IOException ioe) {
             throw new AppError(ioe.getMessage());
         }
@@ -158,19 +167,24 @@ public class CmdReport extends SubCommand {
         int j;
 
         switch (args[i].toLowerCase()) {
-            // get output directory
-            case "-db":
-                i++;
-                database = args[i];
-                i++;
-                j = 2;
-                break;
             // output file
             case "-o":
                 i++;
                 outputFile = Paths.get(args[i]);
                 i++;
                 j = 2;
+                break;
+            // TSV report requested
+            case "-tsv":
+                i++;
+                format = Report.ReportType.TSV;
+                j = 1;
+                break;
+            // CSV report requested
+            case "-csv":
+                i++;
+                format = Report.ReportType.CSV;
+                j = 1;
                 break;
             // complete report of all items/instances/events
             case "-complete":
@@ -201,119 +215,5 @@ public class CmdReport extends SubCommand {
                 j = 0;
         }
         return j;
-    }
-
-    /**
-     * Generate a complete report of all items received, all instances for each
-     * item, and all events for each instance.
-     *
-     * @param w
-     * @throws SQLException
-     * @throws IOException
-     */
-    private void completeReport(Writer w) throws SQLException, IOException {
-        int itemKey, instanceKey;
-        ResultSet items, instances, events;
-        int i;
-
-        w.append("COMPLETE REPORT (all Items/Instances/Events)\n");
-        w.append("Run \n");
-        w.append("\n");
-
-        // go through the items
-        i = 0;
-        items = TblItem.query("*", null, "FILENAME");
-        while (items.next()) {
-            i++;
-            if (i % 100 == 0) {
-                System.out.println(i);
-            }
-            w.append(TblItem.reportItem(items));
-            w.append("\n");
-            itemKey = TblItem.getItemId(items);
-
-            // get instances of this item
-            instances = TblInstance.query("*", "ITEM_ID=" + itemKey, "ITEM_ID");
-            // instances = SQL.query("select * from INSTANCE where ITEM_ID="+itemKey+" ORDER BY ITEM_ID");
-            while (instances.next()) {
-                w.append("  ");
-                w.append(TblInstance.reportInstance(instances));
-                w.append("\n");
-                instanceKey = TblInstance.getInstanceId(instances);
-
-                // get events related to this instance
-                events = SQL.query("INSTANCE_EVENT join EVENT on INSTANCE_EVENT.EVENT_ID=EVENT.EVENT_ID", "*", "INSTANCE_EVENT.INSTANCE_ID=" + instanceKey, "EVENT_ID");
-                while (events.next()) {
-                    w.append("    ");
-                    w.append(TblEvent.reportEvent(events));
-                    w.append("\n");
-                }
-            }
-        }
-    }
-
-    private void custodyAcceptedReport(Writer w) throws SQLException, IOException {
-        ResultSet items;
-        int i;
-
-        w.append("Custody Accepted report\n");
-        w.append("Run \n");
-        w.append("\n");
-
-        // go through the items
-        i = 0;
-        items = TblItem.query("*", "STATUS='Custody-Accepted'", "FILENAME");
-        while (items.next()) {
-            i++;
-            if (i % 100 == 0) {
-                System.out.println(i);
-            }
-            w.append(TblItem.reportItem(items));
-            w.append("\n");
-        }
-    }
-
-    private void abandonedReport(Writer w) throws SQLException, IOException {
-        ResultSet items;
-        int i;
-
-        w.append("Items abandoned report\n");
-        w.append("Run \n");
-        w.append("\n");
-
-        // go through the items
-        i = 0;
-        items = TblItem.query("*", "STATUS='Abandoned'", "FILENAME");
-        while (items.next()) {
-            i++;
-            if (i % 100 == 0) {
-                System.out.println(i);
-            }
-            w.append(TblItem.reportItem(items));
-            w.append("\n");
-        }
-
-    }
-
-    private void incompleteReport(Writer w) throws SQLException, IOException {
-        ResultSet items;
-        int i;
-
-        w.append("Items unfinished report\n");
-        w.append("Run \n");
-        w.append("\n");
-
-        // go through the items
-        i = 0;
-        items = TblItem.query("*", "IS_FINALISED=FALSE", "FILENAME");
-        while (items.next()) {
-            i++;
-            if (i % 100 == 0) {
-                System.out.println(i);
-            }
-            w.append(TblItem.reportItem(items));
-            w.append("\n");
-        }
-
     }
 }

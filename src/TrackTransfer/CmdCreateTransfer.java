@@ -2,7 +2,6 @@ package TrackTransfer;
 
 import VERSCommon.AppError;
 import VERSCommon.AppFatal;
-import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -11,10 +10,9 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class CmdCreateTransfer extends SubCommand {
+public class CmdCreateTransfer extends Command {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdCreateTransfer");
-    private String database;    // database being connected to (may be null)
     private String desc;        // description of this delivery
     private String usage = "-db <databaseURL> -desc <text> [-v] [-d] [-help]";
 
@@ -58,13 +56,14 @@ public class CmdCreateTransfer extends SubCommand {
         genericStatus();
 
         // connect to the database and create the tables
-        database = connectDB(database);
+        connectDB();
         try {
             TblTransfer.createTable();
         } catch (SQLException sqe) {
             if (sqe.getSQLState().equals("42S01") && sqe.getErrorCode() == 42101) {
                 throw new AppError("Failed CreateTransfer: Transfer has already been created ('" + database + "')");
             }
+            throw sqe;
         }
         TblDelivery.createTable();
         TblInstance.createTable();
@@ -96,13 +95,6 @@ public class CmdCreateTransfer extends SubCommand {
         int j;
 
         switch (args[i].toLowerCase()) {
-            // get output directory
-            case "-db":
-                i++;
-                database = args[i];
-                i++;
-                j = 2;
-                break;
             // description of the items to be annotated
             case "-desc":
                 i++;

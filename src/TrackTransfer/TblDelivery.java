@@ -17,12 +17,9 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class TblDelivery extends SQL {
+public class TblDelivery extends SQLTable {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblDelivery");
-    
-    static final int MAX_FILEPATH_LEN = 2560;
-    static final int MAX_DESC_LEN = 100;
     
     static String CREATE_DELIVERY_TABLE
             = "create table DELIVERY ("

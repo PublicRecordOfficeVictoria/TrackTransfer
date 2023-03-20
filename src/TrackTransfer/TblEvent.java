@@ -15,11 +15,9 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class TblEvent extends SQL {
+public class TblEvent extends SQLTable {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblEvent");
-
-    static final int MAX_DESC_LEN = 100;
 
     static String CREATE_EVENT_TABLE
             = "create table EVENT ("
@@ -137,6 +135,26 @@ public class TblEvent extends SQL {
         sb.append(TblEvent.getDescription(rs));
 
         return sb.toString();
+    }
+    
+    /**
+     * Return a string describing this item for a report
+     *
+     * @param rs
+     * @return
+     * @throws java.sql.SQLException
+     */
+    public static String[] tableOut(ResultSet rs) throws SQLException {
+        String[] s = new String[2];
+
+        if (rs == null) {
+            s[0] = "Received";
+            s[1] = "EventDescription";
+        } else {
+            s[0] = TblEvent.getWhenReceived(rs);
+            s[1] = TblEvent.getDescription(rs);
+        }
+        return s;
     }
 
     /**

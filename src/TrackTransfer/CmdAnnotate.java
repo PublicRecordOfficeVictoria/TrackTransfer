@@ -19,10 +19,9 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class CmdAnnotate extends SubCommand {
+public class CmdAnnotate extends Command {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
-    private String database;    // database being connected to (may be null)
     private String desc;        // description of the event
     private Path rootDir;       // root directory containing the objects being annotated
     private int count;          // number of items annotated
@@ -111,7 +110,7 @@ public class CmdAnnotate extends SubCommand {
         }
 
         // connect to the database and create the tables
-        database = connectDB(database);
+        connectDB();
 
         // add the delivery event
         eventKey = TblEvent.add(desc);

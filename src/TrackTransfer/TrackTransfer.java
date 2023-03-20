@@ -18,9 +18,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.TimeZone;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -38,13 +35,14 @@ public class TrackTransfer {
      * Report on version...
      *
      * <pre>
-     * 20230127   0.1 Split Item and Instance
-     * 20230206   0.2 Basic funtionality working
-     * 20230215   0.3 Added AnnotateFromFile command
+     * 20230127 0.1  Split Item and Instance
+     * 20230206 0.2  Basic funtionality working
+     * 20230215 0.3  Added AnnotateFromFile command
+     * 20230320 0.4  Rejigged reporting to generate TSV & CSV outputs
      * </pre>
      */
     static String version() {
-        return ("0.3");
+        return ("0.4");
     }
 
     static String copyright = "Copyright 2022 Public Record Office Victoria";
@@ -58,8 +56,6 @@ public class TrackTransfer {
      * @throws AppFatal if something goes wrong
      */
     public TrackTransfer(String args[]) throws AppFatal {
-        SimpleDateFormat sdf;
-        TimeZone tz;
 
         // set up the console handler for log messages and set it to output anything
         System.setProperty("java.util.logging.SimpleFormatter.format", "%5$s%n");
@@ -80,10 +76,7 @@ public class TrackTransfer {
         LOG.info("*                                                                            *");
         LOG.info("******************************************************************************");
         LOG.info("");
-        tz = TimeZone.getTimeZone("GMT+10:00");
-        sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss+10:00");
-        sdf.setTimeZone(tz);
-        LOG.log(Level.INFO, "Run at {0}", sdf.format(new Date()));
+        LOG.log(Level.INFO, "Run at {0}", Report.getDateTime());
         LOG.info("");
     }
 
@@ -193,6 +186,7 @@ public class TrackTransfer {
                     doCommand(tokens);
                 } catch (AppError ae) {
                     LOG.log(Level.WARNING, "****** Something went wrong: {0}", new Object[]{ae.getMessage()});
+                    break;
                 }
             }
             br.close();
@@ -218,14 +212,14 @@ public class TrackTransfer {
         if (args.length < 2 || args[1] == null) {
             throw new AppFatal("Print tables command: missing database name. Usage: trackTransfer printtables <databaseURI>");
         }
-        SQL.connect(args[1]);
+        SQLTable.connect(args[1]);
         LOG.info(TblTransfer.printTable());
         LOG.info(TblItem.printTable());
         LOG.info(TblDelivery.printTable());
         LOG.info(TblInstance.printTable());
         LOG.info(TblEvent.printTable());
         LOG.info(TblInstanceEvent.printTable());
-        SQL.disconnect();
+        SQLTable.disconnect();
     }
 
     /**

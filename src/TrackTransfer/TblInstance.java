@@ -27,22 +27,20 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class TblInstance extends SQL {
+public class TblInstance extends SQLTable {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblInstance");
-
-    static final int MAX_FILEPATH_LEN = 2560;
     static final int MAX_STATUS_LEN = 20;
 
     static String CREATE_INSTANCE_TABLE
             = "create table INSTANCE ("
             + "INSTANCE_ID integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " // primary key
             + "DELIVERY_ID integer NOT NULL," // transfer delivery belongs to
-            + "ITEM_ID integer, "             // item instance belongs to (may be 0)
+            + "ITEM_ID integer, " // item instance belongs to (may be 0)
             + "FILEPATH varchar(" + MAX_FILEPATH_LEN + ") NOT NULL," // pathname of the instance (within a delivery)
-            + "IS_DUPLICATE boolean,"         // true if this instance is to be ignored as it is a duplicate in this delivery
-            + "IS_SUPERSEDED boolean,"        // true if this instance has been superseded by an instance in a later delivery
-            + "PREVIOUS_INSTANCE integer,"    // previous instance of this record (0 if null)
+            + "IS_DUPLICATE boolean," // true if this instance is to be ignored as it is a duplicate in this delivery
+            + "IS_SUPERSEDED boolean," // true if this instance has been superseded by an instance in a later delivery
+            + "PREVIOUS_INSTANCE integer," // previous instance of this record (0 if null)
             + "constraint DELIVERY_FK foreign key (DELIVERY_ID) references DELIVERY(DELIVERY_ID)"
             + ");";
 
@@ -70,8 +68,10 @@ public class TblInstance extends SQL {
      *
      * @param deliveryId the delivery the file is part of
      * @param itemId the item this instance belongs to
-     * @param filepath the pathname of the file (relative to the root of the delivery)
-     * @param duplicate true if this file is a duplicate of another in this delivery
+     * @param filepath the pathname of the file (relative to the root of the
+     * delivery)
+     * @param duplicate true if this file is a duplicate of another in this
+     * delivery
      * @param prevInstanceId id of previous instance of this item
      * @return primary key of the added row
      * @throws SQLException if something happened that can't be handled
@@ -136,7 +136,7 @@ public class TblInstance extends SQL {
 
         return rs.getInt("DELIVERY_ID");
     }
-    
+
     /**
      * Get the item id for an instance in a result set.
      *
@@ -281,6 +281,32 @@ public class TblInstance extends SQL {
         sb.append("'");
 
         return sb.toString();
+    }
+
+    /**
+     * Return a string describing this item for a report
+     *
+     * @param rs
+     * @return
+     * @throws java.sql.SQLException
+     */
+    public static String[] tableOut(ResultSet rs) throws SQLException {
+        String[] s = new String[2];
+
+        if (rs == null) {
+            s[0] = "InstanceStatus";
+            s[1] = "OriginalLocation";
+        } else {
+            if (TblInstance.isDuplicate(rs)) {
+                s[0] = "DUPLICATE";
+            } else if (TblInstance.isSuperseded(rs)) {
+                s[0] = "SUPERSEDED";
+            } else {
+                s[0] = "LATEST";
+            }
+            s[1] = TblInstance.getFilepath(rs);
+        }
+        return s;
     }
 
     /**

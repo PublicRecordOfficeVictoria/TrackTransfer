@@ -18,50 +18,51 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * This class has the common routines for a sub command within Track TblTransfer
+ * This class has the common routines for a sub command within Track Transfer
  *
  * @author Andrew
  */
-public abstract class SubCommand {
-
-    private final static Logger LOG = Logger.getLogger("TrackTransfer.SubCommand");
-    boolean help;       // true if help has been requested
-    boolean veo;        // true if only considering V2 or V3 VEOs as records
+public abstract class Command {
+    private final static Logger LOG = Logger.getLogger("TrackTransfer.Command");
+    protected boolean help;       // true if help has been requested
+    protected boolean veo;        // true if only considering V2 or V3 VEOs as records
+    protected String database;    // database connected to
     static final String DB_PREFIX = "jdbc:h2:";
 
-    protected SubCommand() {
+    protected Command() {
         help = false;
     }
 
     /**
      * Connect to the database.The required database name is of the form
      * 'jdbc:h2:F/fileName' which results in opening a database file
-     * 'F/fileName.mv.db'. (Note the 'h2' relates to the implementation of JDBC;
-     * if this is replaced, that string must be replaced.)
+     * 'F/fileName.mv.db'.(Note the 'h2' relates to the implementation of JDBC;
+     *  if this is replaced, that string must be replaced.)
+     * 
+     *  Users can 'specify' the database to connect to in two ways. The first is
+     *  to specify the 'name' of the database (without the prefixing 'jdbc:h2:'.
+     *  If a name is not specified (passed null), the current working directory
+     *  is searched for a file ending in '.mv.db'. This is then used as the
+     *  directory name. If there are multiple '.mv.db' files in the current
+     *  directory, we complain.
      *
-     * Users can 'specify' the database to connect to in two ways. The first is
-     * to specify the 'name' of the database (without the prefixing 'jdbc:h2:'.
-     * If a name is not specified (passed null), the current working directory
-     * is searched for a file ending in '.mv.db'. This is then used as the
-     * directory name. If there are multiple '.mv.db' files in the current
-     * directory, we complain.
-     *
-     * @param dbName name of database to connect to
+     * @return the name of the database connected to
      * @returns the database name connected to
      * @throws SQLException problem connecting to the database
      * @throws AppError multiple databases found
      * @throws AppFatal shouldn't happen
      */
-    protected String connectDB(String dbName) throws SQLException, AppError, AppFatal {
+    protected String connectDB() throws SQLException, AppError, AppFatal {
         Path cwd;
-        String fn, fp, database;
+        String fn, fp, dbName;
         int i;
 
-        if (dbName == null) {
+        if (database == null) {
             cwd = Paths.get(System.getProperty("user.dir"));
             assert cwd != null;
 
             // go through the items in the directory
+            dbName = null;
             try (DirectoryStream<Path> ds = Files.newDirectoryStream(cwd)) {
                 for (Path entry : ds) {
                     fn = entry.getFileName().toString().toLowerCase();
@@ -84,15 +85,13 @@ public abstract class SubCommand {
                 throw new AppError("Database name was not specified in command line, but no '.mv.db' files were found in current working directory");
             }
             database = DB_PREFIX + dbName;
-        } else if (dbName.contains(":")) {
-            database = dbName;
-        } else {
-            dbName = Paths.get(dbName).toAbsolutePath().toString().replaceAll("\\\\", "/");
+        } else if (!database.contains(":")) {
+            dbName = Paths.get(database).toAbsolutePath().toString().replaceAll("\\\\", "/");
             database = DB_PREFIX + dbName;
         }
         LOG.log(Level.FINE, " Connecting to database: {0}", database);
 
-        SQL.connect(database);
+        SQLTable.connect(database);
         return database;
     }
 
@@ -102,7 +101,7 @@ public abstract class SubCommand {
      * @throws SQLException
      */
     protected void disconnectDB() throws SQLException {
-        SQL.disconnect();
+        SQLTable.disconnect();
     }
 
     /**
@@ -118,14 +117,21 @@ public abstract class SubCommand {
         // process remaining command line arguments
         veo = false;
         help = false;
+        database = null;
         i = 1;
         try {
             while (i < args.length) {
                 switch (args[i].toLowerCase()) {
-                    // if verbose mode...
+                    // if we want to only process VEOs...
                     case "-veo":
                         veo = true;
                         i++;
+                        break;
+                    case "-db":
+                        i++;
+                        database = args[i];
+                        i++;
+                        System.out.println("Dabatase: '"+database+"'");
                         break;
                     // if verbose mode...
                     case "-v":

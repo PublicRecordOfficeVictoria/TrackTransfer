@@ -24,7 +24,7 @@ import java.util.regex.PatternSyntaxException;
  *
  * @author Andrew
  */
-public class CmdAnnotateFromFile extends SubCommand {
+public class CmdAnnotateFromFile extends Command {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdLoadFile");
     private Path file;          // file to process for Item names & condition
@@ -32,7 +32,6 @@ public class CmdAnnotateFromFile extends SubCommand {
     private List<MatchPattern> patterns; // patterns to match agains C/TSV files
     private int fileColumn;     // column in which to find the filename
     private boolean csv;        // true if files are separated by commas rather than tabs
-    private String database;    // database being connected to (may be null)
     private String desc;        // description of the event
     private int count;          // number of items annotated
     private String status;      // status of the items
@@ -226,7 +225,7 @@ public class CmdAnnotateFromFile extends SubCommand {
         }
 
         // connect to the database and create the tables
-        database = connectDB(database);
+        database = connectDB();
 
         // add the delivery event
         eventKey = TblEvent.add(desc);

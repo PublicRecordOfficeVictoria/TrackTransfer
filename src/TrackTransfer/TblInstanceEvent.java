@@ -15,7 +15,7 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class TblInstanceEvent extends SQL {
+public class TblInstanceEvent extends SQLTable {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.TblInstanceEvent");
 

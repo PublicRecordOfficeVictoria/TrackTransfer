@@ -17,10 +17,9 @@ import java.util.logging.Logger;
  *
  * @author Andrew
  */
-public class CmdNewDelivery extends SubCommand {
+public class CmdNewDelivery extends Command {
 
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdNewDelivery");
-    private String database;    // database being connected to (may be null)
     private String desc;         // description of this delivery
     private Path rootDir;        // root directory containing the objects being delivered
     private int noFiles;         // total number of files found in delivery
@@ -113,7 +112,7 @@ public class CmdNewDelivery extends SubCommand {
         }
 
         // connect to the database and create the tables
-        database = connectDB(database);
+        database = connectDB();
 
         // get the key for the one transfer
         transferKey = 0;
@@ -154,12 +153,6 @@ public class CmdNewDelivery extends SubCommand {
         int j;
 
         switch (args[i].toLowerCase()) {
-            // get output directory
-            case "-db":
-                i++;
-                database = args[i];
-                j = 2;
-                break;
             // description of the delivery
             case "-desc":
                 i++;

@@ -19,19 +19,23 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * This class encapsulates the SQL interface to the database.
+ * This class encapsulates the SQLTable interface to the database.
  *
  * @author Andrew
  */
-public abstract class SQL {
+public abstract class SQLTable {
 
-    private final static Logger LOG = Logger.getLogger("TrackTransfer.SQL");
-    private static Connection con = null;  // the connection to the database, this is shared among all instances of SQL (and its subclasses)
+    private final static Logger LOG = Logger.getLogger("TrackTransfer.SQLTable");
+    private static Connection con = null;  // the connection to the database, this is shared among all instances of SQLTable (and its subclasses)
+    
+    // constants for common fields
+    protected static final int MAX_DESC_LEN = 200;
+    protected static final int MAX_FILEPATH_LEN = 2560;
 
     /**
      * Default constructor
      */
-    public SQL() {
+    public SQLTable() {
     }
 
     /**
@@ -66,7 +70,7 @@ public abstract class SQL {
     /**
      * Execute an update statement.
      *
-     * @param command the SQL command updating the database
+     * @param command the SQLTable command updating the database
      * @return the result set returned
      * @throws SQLException if something happened that can't be handled
      */
@@ -86,7 +90,7 @@ public abstract class SQL {
     /**
      * Add a single row to a table, returning an integer primary key.
      *
-     * @param command the SQL command updating the database
+     * @param command the SQLTable command updating the database
      * @param primaryKey the column name of the integer primary key
      * @return the primary key of the added row
      * @throws java.sql.SQLException
@@ -99,9 +103,9 @@ public abstract class SQL {
             stmt.executeUpdate(command, Statement.RETURN_GENERATED_KEYS);
             try (ResultSet rs = stmt.getGeneratedKeys()) {
                 rs.next();
-                // assert rs.next() : "No primary key returned after adding a row (SQL.addSingleRow)";
+                // assert rs.next() : "No primary key returned after adding a row (SQLTable.addSingleRow)";
                 key = rs.getInt(primaryKey);
-                // assert !rs.next() : "More than one primary key returned after adding a single row (SQL.addSingleRow)";
+                // assert !rs.next() : "More than one primary key returned after adding a single row (SQLTable.addSingleRow)";
             }
         }
         return key;
@@ -110,7 +114,7 @@ public abstract class SQL {
     /**
      * Add a single row to a table, without returning an integer primary key.
      *
-     * @param command the SQL command updating the database
+     * @param command the SQLTable command updating the database
      * @throws java.sql.SQLException
      */
     public static final void addSingleRow(String command) throws SQLException {
@@ -157,7 +161,7 @@ public abstract class SQL {
     /**
      * Execute a query statement.
      *
-     * @param command the SQL command querying the database
+     * @param command the SQLTable command querying the database
      * @return the ResultSet containing the results of the query
      * @throws SQLException if something happened that can't be handled
      */
@@ -200,7 +204,7 @@ public abstract class SQL {
     
     /**
      * Encode single quotes to be double quotes in a string to be put into an
-     * SQL database
+ SQLTable database
      * @param s
      * @return 
      */
@@ -212,7 +216,7 @@ public abstract class SQL {
     }
     
     /**
-     * Unencode double quotes to be single quotes in strings from an SQL database
+     * Unencode double quotes to be single quotes in strings from an SQLTable database
      * @param s
      * @return 
      */
@@ -245,7 +249,7 @@ public abstract class SQL {
      * to standard error.
      *
      * @param mesg a contextual message to be included in the AppFatal exception
-     * @param ex the SQL exception
+     * @param ex the SQLTable exception
      * @param method the method generating the exception
      * @return the created AppFatal
      */
