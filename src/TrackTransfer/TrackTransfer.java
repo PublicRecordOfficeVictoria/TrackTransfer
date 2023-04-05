@@ -39,10 +39,11 @@ public class TrackTransfer {
      * 20230206 0.2  Basic funtionality working
      * 20230215 0.3  Added AnnotateFromFile command
      * 20230320 0.4  Rejigged reporting to generate TSV & CSV outputs
+     * 20230404 0.5  Added keywords, and combined annotate and annotateFromFile
      * </pre>
      */
     static String version() {
-        return ("0.4");
+        return ("0.5");
     }
 
     static String copyright = "Copyright 2022 Public Record Office Victoria";
@@ -118,10 +119,6 @@ public class TrackTransfer {
             case "annotate":
                 CmdAnnotate a = new CmdAnnotate();
                 a.doIt(args);
-                break;
-            case "annotatefromfile":
-                CmdAnnotateFromFile ff = new CmdAnnotateFromFile();
-                ff.doIt(args);
                 break;
             case "report":
                 CmdReport cr = new CmdReport();
@@ -210,15 +207,17 @@ public class TrackTransfer {
     private void printTables(String args[]) throws AppFatal, AppError, SQLException {
         // final argument is the database name
         if (args.length < 2 || args[1] == null) {
-            throw new AppFatal("Print tables command: missing database name. Usage: trackTransfer printtables <databaseURI>");
+            throw new AppError("Print tables command: missing database name. Usage: trackTransfer printtables <databaseURI>");
         }
         SQLTable.connect(args[1]);
-        LOG.info(TblTransfer.printTable());
+        // LOG.info(TblTransfer.printTable());
         LOG.info(TblItem.printTable());
-        LOG.info(TblDelivery.printTable());
-        LOG.info(TblInstance.printTable());
-        LOG.info(TblEvent.printTable());
-        LOG.info(TblInstanceEvent.printTable());
+        //LOG.info(TblDelivery.printTable());
+        //LOG.info(TblInstance.printTable());
+        //LOG.info(TblEvent.printTable());
+        //LOG.info(TblInstanceEvent.printTable());
+        LOG.info(TblItemKeyword.printTable());
+        LOG.info(TblKeyword.printTable());
         SQLTable.disconnect();
     }
 

@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.logging.Logger;
-import org.json.simple.JSONObject;
 
 /**
  * This generates a
@@ -19,6 +18,7 @@ import org.json.simple.JSONObject;
  * @author Andrew
  */
 public class RptComplete extends Report {
+
     private final static Logger LOG = Logger.getLogger("TrackTransfer.RptComplete");
 
     public RptComplete() {
@@ -35,7 +35,8 @@ public class RptComplete extends Report {
      */
     public void generate(Path output) throws SQLException, IOException, AppError {
         int itemKey, instanceKey;
-        ResultSet items, instances, events;
+        ResultSet items, keywords, instances, events;
+        String state;
         int i;
 
         open(output);
@@ -56,9 +57,13 @@ public class RptComplete extends Report {
 
             // write current item (if separating out items)
             writeItem(items);
+            itemKey = TblItem.getItemId(items);
+
+            // get keywords for this item
+            keywords = SQLTable.query("ITEM_KEYWORD join KEYWORD on ITEM_KEYWORD.KEYWORD_ID=KEYWORD.KEYWORD_ID", "*", "ITEM_KEYWORD.ITEM_ID=" + itemKey, "KEYWORD");
+            writeKeywords(keywords, TblItem.getState(items));
 
             // get instances of this item
-            itemKey = TblItem.getItemId(items);
             instances = TblInstance.query("*", "ITEM_ID=" + itemKey, "ITEM_ID");
             // instances = SQLTable.query("select * from INSTANCE where ITEM_ID="+itemKey+" ORDER BY ITEM_ID");
             while (instances.next()) {
@@ -72,7 +77,7 @@ public class RptComplete extends Report {
                 }
             }
         }
-        
+
         close();
     }
 
@@ -114,6 +119,44 @@ public class RptComplete extends Report {
         switch (format) {
             case TEXT:
                 w.append(TblItem.reportItem(item));
+                w.append("\n");
+                break;
+            case CSV:
+            case TSV:
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Write a list of Keywords
+     *
+     * @param item
+     * @throws IOException
+     * @throws SQLException
+     */
+    private void writeKeywords(ResultSet keywords, String state) throws IOException, SQLException {
+        switch (format) {
+            case TEXT:
+                if (keywords.next()) {
+                    w.append(" Keywords: ");
+                    if (state.equals("C")) {
+                        w.append(" 'Custody-accepted'");
+                    } else if (state.equals("A")) {
+                        w.append(" 'Abandoned'");
+                    }
+                    do {
+                        w.append("'");
+                        w.append(TblKeyword.getKeyword(keywords));
+                        w.append("' ");
+                    } while (keywords.next());
+                } else if (state.equals("C")) {
+                    w.append(" Keywords: 'Custody-accepted'");
+                } else if (state.equals("A")) {
+                    w.append(" Keywords: 'Abandoned'");
+                } else {
+                    w.append(" No keywords set");
+                }
                 w.append("\n");
                 break;
             case CSV:

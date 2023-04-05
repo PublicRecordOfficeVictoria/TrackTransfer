@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.logging.Logger;
 
 /**
@@ -19,35 +20,39 @@ import java.util.logging.Logger;
  * @author Andrew
  */
 public class RptOnItems extends Report {
+
     private final static Logger LOG = Logger.getLogger("TrackTransfer.RptOnItems");
 
     public RptOnItems() {
     }
 
-    /**
-     * Generate a complete report of all items for which custody has been
-     * accepted
-     *
-     * @param output file name of the report
-     * @param header
-     * @param where
-     * @param what
-     * @throws SQLException
-     * @throws IOException
-     * @throws VERSCommon.AppError
-     */
-    public void generate(Path output, String header, String where, String sortby) throws SQLException, IOException, AppError {
+    public void generate(Path output, String header, ArrayList<String> keywords, String sortby) throws SQLException, IOException, AppError {
         ResultSet items;
         int i;
+        StringBuilder where = new StringBuilder();
 
         open(output);
 
         // write the header
-        writeHeader(header);
+        writeHeader(header, keywords);
 
-        // go through the items
+        // get the items with the specified keywords
+        for (i = 0; i < keywords.size(); i++) {
+            if (keywords.get(i).equalsIgnoreCase("Custody-accepted")) {
+                where.append("ITEM.STATE='C'");
+            } else if (keywords.get(i).equalsIgnoreCase("Abandoned")) {
+                where.append("ITEM.STATE='A'");
+            } else if (keywords.get(i).equalsIgnoreCase("Incomplete")) {
+                where.append("ITEM.STATE='P'");
+            } else {
+                where.append("KEYWORD.KEYWORD='" + keywords.get(i) + "'");
+            }
+            if (i < keywords.size() - 1) {
+                where.append(" OR ");
+            }
+        }
         i = 0;
-        items = TblItem.query("*", where, sortby);
+        items = SQLTable.query("ITEM left join ITEM_KEYWORD on ITEM.ITEM_ID=ITEM_KEYWORD.ITEM_ID left join KEYWORD on ITEM_KEYWORD.KEYWORD_ID=KEYWORD.KEYWORD_ID", "*", where.toString(), sortby);
         while (items.next()) {
 
             // write a heartbeat on stdout to show how far we've come
@@ -59,7 +64,7 @@ public class RptOnItems extends Report {
             // write current item (if separating out items)
             writeItem(items);
         }
-        
+
         close();
     }
 
@@ -70,12 +75,27 @@ public class RptOnItems extends Report {
      * @throws IOException
      * @throws SQLException
      */
-    private void writeHeader(String header) throws IOException, SQLException {
+    private void writeHeader(String header, ArrayList<String> keywords) throws IOException, SQLException {
+        int i;
         switch (format) {
             case TEXT:
+                w.append("Report on Items ");
                 w.append(header);
+                w.append(": ");
+                for (i = 0; i < keywords.size(); i++) {
+                    w.append("'");
+                    w.append(keywords.get(i));
+                    w.append("'");
+                    if (keywords.size() > 1) {
+                        if (i < keywords.size() - 2) {
+                            w.append(", ");
+                        } else if (i < keywords.size()-1) {
+                            w.append(", or ");
+                        }
+                    }
+                }
                 w.append("\n");
-                w.append("Run at "+getDateTime()+"\n");
+                w.append("Run at " + getDateTime() + "\n");
                 w.append("\n");
                 break;
             case CSV:

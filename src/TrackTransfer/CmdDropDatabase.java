@@ -48,6 +48,8 @@ public class CmdDropDatabase extends Command {
 
         // connect to the database and drop the tables
         connectDB();
+        TblItemKeyword.dropTable();
+        TblKeyword.dropTable();
         TblItem.dropTable();
         TblInstanceEvent.dropTable();
         TblEvent.dropTable();

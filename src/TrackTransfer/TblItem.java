@@ -39,8 +39,7 @@ public class TblItem extends SQLTable {
             + "HASHALG varbinary(" + MAX_HASHALG_LEN + "), " // algorithm used to calculate hash value
             + "HASH varchar(" + MAX_HASH_LEN + "), " // hash value of the record
             + "IS_RECORD boolean, " // true if this item is a record
-            + "IS_FINALISED boolean, " // true if this item has been finalised
-            + "STATUS varchar(" + MAX_STATUS_LEN + "), " // status of this item
+            + "STATE char, " // state of this item ('P'=processing, 'A'=abandoned, 'C'=custody accepted
             + "CURRENT_INSTANCE_ID integer NOT NULL, " // last instance of this item that we saw
             + "ACTIVE_INSTANCE_ID integer NOT NULL, " // the current active instance of this item
             + "constraint CURRENT_INSTANCE_FK foreign key (CURRENT_INSTANCE_ID) references INSTANCE(INSTANCE_ID), "
@@ -70,35 +69,31 @@ public class TblItem extends SQLTable {
     }
 
     /**
-     * Add a row to the item table. The arguments are the identifier of the
+     * Add a row to the item table.The arguments are the identifier of the
      * record, its initial status, and the link to first instance of the record
-     * found in a delivery. At least one of filename or hash must be not null.
+     * found in a delivery.At least one of filename or hash must be not null.
      *
      * @param filename of the record (null if not used)
      * @param hashAlg hash algorithm used to generate the hash (null if hash not
      * present)
      * @param hash hash value (null if not used)
      * @param isRecord true if this item is a record
-     * @param isFinalised true if this item has been finalised
-     * @param status initial status of the record (cannot be null)
      * @param instanceId key of the first instance of this record
      * @return primary key of the added row
      * @throws SQLException if something happened that can't be handled
      */
-    public static int add(String filename, String hashAlg, String hash, boolean isRecord, boolean isFinalised, String status, int instanceId) throws SQLException {
+    public static int add(String filename, String hashAlg, String hash, boolean isRecord, int instanceId) throws SQLException {
         StringBuilder sb = new StringBuilder();
 
         // check invariants
         assert filename != null || (hash != null && hashAlg != null);
-        assert status != null;
         assert instanceId > 1;
 
         filename = truncate("Filename", filename, MAX_FILENAME_LEN);
         hashAlg = truncate("Hash algorithm", hashAlg, MAX_HASHALG_LEN);
         hash = truncate("Hash", hash, MAX_HASH_LEN);
-        status = truncate("Status", status, MAX_STATUS_LEN);
 
-        sb.append("insert into ITEM (FILENAME, HASHALG, HASH, IS_RECORD, IS_FINALISED, STATUS, CURRENT_INSTANCE_ID, ACTIVE_INSTANCE_ID) values ('");
+        sb.append("insert into ITEM (FILENAME, HASHALG, HASH, IS_RECORD, STATE, CURRENT_INSTANCE_ID, ACTIVE_INSTANCE_ID) values ('");
         sb.append(encode(filename));
         sb.append("', '");
         sb.append(encode(hashAlg));
@@ -106,11 +101,7 @@ public class TblItem extends SQLTable {
         sb.append(hash);
         sb.append("', ");
         sb.append(isRecord ? "TRUE" : "FALSE");
-        sb.append(", ");
-        sb.append(isFinalised ? "TRUE" : "FALSE");
-        sb.append(", '");
-        sb.append(encode(status));
-        sb.append("', ");
+        sb.append(", 'P', ");
         sb.append(instanceId);
         sb.append(", ");
         sb.append(instanceId);
@@ -135,7 +126,7 @@ public class TblItem extends SQLTable {
 
         assert filename != null || hash != null;
 
-        if ((i = filename.toLowerCase().lastIndexOf(".lnk")) != -1) {
+        if ((filename != null && (i = filename.toLowerCase().lastIndexOf(".lnk")) != -1)) {
             filename = filename.substring(0, i);
         }
 
@@ -230,7 +221,8 @@ public class TblItem extends SQLTable {
     }
 
     /**
-     * Is this item finalised
+     * Is this item finalised? It is if either custody-accepted or abandoned
+     * is set.
      *
      * @param rs
      * @return
@@ -238,65 +230,40 @@ public class TblItem extends SQLTable {
      */
     public static boolean isFinalised(ResultSet rs) throws SQLException {
         assert rs != null;
-        return rs.getBoolean("IS_FINALISED");
+        return getState(rs).equals("A") || getState(rs).equals("C");
     }
 
     /**
-     * Set this item to be finalised. This means the active instance will not
-     * change
-     *
-     * @param key key of item to change (must be > 0)
-     * @param isFinalised new value of isRecord
-     * @throws SQLException
-     */
-    public static void setIsFinalised(int key, boolean isFinalised) throws SQLException {
-        StringBuilder sb = new StringBuilder();
-
-        assert key > 0;
-
-        sb.append("update ITEM set IS_FINALISED=");
-        sb.append(isFinalised ? "TRUE" : "FALSE");
-        sb.append("' where ITEM_ID=");
-        sb.append(key);
-        sb.append(";");
-        update(sb.toString());
-    }
-
-    /**
-     * Get the status of a row in a result set (may be null).
+     * Get the State of this Item ('P'=processing, 'A'=abandoned, 'C'=custody
+     * accepted).
      *
      * @param rs
      * @return
      * @throws SQLException if something happened that can't be handled
      */
-    public static String getStatus(ResultSet rs) throws SQLException {
+    public static String getState(ResultSet rs) throws SQLException {
         assert rs != null;
-        return unencode(rs.getString("STATUS"));
+        return rs.getString("STATE");
     }
 
     /**
-     * Set the status of an item.
+     * Set the State of an Item ('P'=processing, 'A'=abandoned, 'C'=custody
+     * accepted).
      *
      * @param key key of item to change (must be > 0)
-     * @param status new status (must not be null)
-     * @param isFinalised true if the item has been finalised
+     * @param state new state
      * @throws SQLException
      */
-    public static void setStatus(int key, String status, boolean isFinalised) throws SQLException {
+    public static void setState(int key, String state) throws SQLException {
         StringBuilder sb = new StringBuilder();
 
         assert key > 0;
-        assert status != null;
-        if (status.length() > MAX_STATUS_LEN) {
-            LOG.log(Level.WARNING, "Truncated status ({0}) longer than {1}", new Object[]{status, MAX_STATUS_LEN});
-            status = status.substring(0, MAX_STATUS_LEN);
-        }
+        assert state != null;
+        assert state.equals("P") || state.equals("A") || state.equals("C");
 
-        sb.append("update ITEM set STATUS='");
-        sb.append(encode(status));
-        sb.append("', IS_FINALISED=");
-        sb.append(isFinalised);
-        sb.append(" where ITEM_ID=");
+        sb.append("update ITEM set STATE='");
+        sb.append(state);
+        sb.append("' where ITEM_ID=");
         sb.append(key);
         sb.append(";");
         update(sb.toString());
@@ -383,14 +350,16 @@ public class TblItem extends SQLTable {
         sb.append("' ");
         if (TblItem.isFinalised(rs)) {
             sb.append("FINALISED ");
+            if (TblItem.getState(rs).equals("C")) {
+                sb.append("(Custody Accepted) ");
+            } else if (TblItem.getState(rs).equals("A")) {
+                sb.append("(Abandoned) ");
+            }
         } else if (!TblItem.isRecord(rs)) {
             sb.append("NOT A RECORD ");
         } else {
             sb.append("PROCESSING ");
         }
-        sb.append("(Status: ");
-        sb.append(TblItem.getStatus(rs));
-        sb.append(")");
 
         return sb.toString();
     }
@@ -403,22 +372,24 @@ public class TblItem extends SQLTable {
      * @throws java.sql.SQLException
      */
     public static String[] tableOut(ResultSet rs) throws SQLException {
-        String[] s = new String[3];
+        String[] s = new String[2];
 
         if (rs == null) {
             s[0] = "Item";
             s[1] = "Status";
-            s[2] = "Keyword";
         } else {
             s[0] = TblItem.getFilename(rs);
             if (TblItem.isFinalised(rs)) {
-                s[1] = "FINALISED ";
+                if (TblItem.getState(rs).equals("C")) {
+                    s[1] = "FINALISED (Custody Accepted) ";
+                } else if (TblItem.getState(rs).equals("A")) {
+                    s[1] = "FINALISED (Abandoned) ";
+                }
             } else if (!TblItem.isRecord(rs)) {
                 s[1] = "NOT A RECORD ";
             } else {
                 s[1] = "PROCESSING ";
             }
-            s[2] = TblItem.getStatus(rs);
         }
         return s;
     }
@@ -433,7 +404,7 @@ public class TblItem extends SQLTable {
         StringBuilder sb = new StringBuilder();
         ResultSet rs;
 
-        sb.append("ItemKey Filename HashAlg Hash isRecord isFinalised Status Current Instance\n");
+        sb.append("ItemKey Filename HashAlg Hash isRecord State Current Instance\n");
         rs = query("*", null, "ITEM_ID");
         while (rs.next()) {
             sb.append(getItemId(rs));
@@ -446,9 +417,7 @@ public class TblItem extends SQLTable {
             sb.append(" ");
             sb.append(isRecord(rs));
             sb.append(" ");
-            sb.append(isFinalised(rs));
-            sb.append(" ");
-            sb.append(getStatus(rs));
+            sb.append(getState(rs));
             sb.append(" ");
             sb.append(getCurrentInstanceId(rs));
             sb.append("\n");

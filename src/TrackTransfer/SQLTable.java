@@ -124,6 +124,20 @@ public abstract class SQLTable {
             stmt.executeUpdate(command);
         }
     }
+    
+    /**
+     * Remove a single row from a table
+     *
+     * @param command the SQLTable command updating the database
+     * @throws java.sql.SQLException
+     */
+    public static final void removeRows(String command) throws SQLException {
+
+        try (Statement stmt = con.createStatement()) {
+            stmt.closeOnCompletion();
+            stmt.executeUpdate(command);
+        }
+    }
 
     /**
      * Query a table returning a result set.The result set must be closed by the

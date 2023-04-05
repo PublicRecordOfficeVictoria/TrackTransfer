@@ -2,15 +2,12 @@ package TrackTransfer;
 
 import VERSCommon.AppError;
 import VERSCommon.AppFatal;
-import java.io.BufferedWriter;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -24,6 +21,7 @@ public class CmdReport extends Command {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
     private Path outputFile;        // report file
     private Reports reportReq;      // report requested
+    private ArrayList<String> keywords;      // keywords requested
     private Report.ReportType format;      // format of requested report
     private final String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
 
@@ -32,17 +30,20 @@ public class CmdReport extends Command {
     }
 
     private enum Reports {
-        COMPLETE, // all items and instances
+        COMPLETE,       // all items and instances
+        KEYWORD,        // all items with specific keyword set
         CUSTODY_ACCEPTED, // all items for which custody has been accepted
-        ABANDONED, // all items which have been abandoned
-        INCOMPLETE  // all items for which processing is incomplete
+        ABANDONED,      // all items which have been abandoned
+        INCOMPLETE      // all items for which processing is incomplete
     }
 
     public void doIt(String args[]) throws AppFatal, AppError, SQLException {
         Report report;
+        String[] s;
 
         reportReq = Reports.COMPLETE;
         format = Report.ReportType.TEXT;
+        keywords = new ArrayList<>();
 
         config(args, usage);
 
@@ -52,6 +53,7 @@ public class CmdReport extends Command {
             LOG.info("'Report' command line arguments:");
             LOG.info(" Reports available:");
             LOG.info("  -complete: full report of all the items and instances (default)");
+            LOG.info("  -keyword <keyword>: report of all items that have the keyword set");
             LOG.info("  -custody-accepted: report of all items for which custody has been accepted");
             LOG.info("  -abandoned: report of all items which have been abandoned");
             LOG.info("  -incomplete: report of all items for which processing is incomplete");
@@ -77,6 +79,9 @@ public class CmdReport extends Command {
         switch (reportReq) {
             case COMPLETE:
                 LOG.info(" Generate Complete report");
+                break;
+            case KEYWORD:
+                LOG.log(Level.INFO, " Generate report for keywords: {0}", keywords);
                 break;
             case CUSTODY_ACCEPTED:
                 LOG.info(" Generate Custody Accepted report");
@@ -114,6 +119,11 @@ public class CmdReport extends Command {
 
             // connect to the database and create the tables
             connectDB();
+            
+            // get transfer information
+            ResultSet transfer = TblTransfer.query("DESC", null, null);
+            String transferDesc = TblTransfer.getDescription(transfer);
+            System.out.println("***"+transferDesc);
 
             //System.out.println(TblItem.printTable());
             //System.out.println(TblInstance.printTable());
@@ -124,17 +134,24 @@ public class CmdReport extends Command {
                     report = new RptComplete();
                     ((RptComplete) report).generate(outputFile);
                     break;
+                case KEYWORD:
+                    report = new RptOnItems();
+                    ((RptOnItems) report).generate(outputFile, "with keywords", keywords, "FILENAME");
+                    break;
                 case CUSTODY_ACCEPTED:
                     report = new RptOnItems();
-                    ((RptOnItems) report).generate(outputFile, "Custody Accepted", "STATUS='Custody-Accepted'", "FILENAME");
+                    keywords.add("Custody-accepted");
+                    ((RptOnItems) report).generate(outputFile, "with status Custody Accepted", keywords, "FILENAME");
                     break;
                 case ABANDONED:
                     report = new RptOnItems();
-                    ((RptOnItems) report).generate(outputFile, "Items Abandonded", "STATUS='Abandoned'", "FILENAME");
+                    keywords.add("Abandoned");
+                    ((RptOnItems) report).generate(outputFile, "with status Abandoned", keywords, "FILENAME");
                     break;
                 case INCOMPLETE:
                     report = new RptOnItems();
-                    ((RptOnItems) report).generate(outputFile, "Items for which processing is incomplete", "IS_FINALISED=FALSE", "FILENAME");
+                    keywords.add("Incomplete");
+                    ((RptOnItems) report).generate(outputFile, "for which processing is incomplete", keywords, "FILENAME");
                     break;
                 default:
                     LOG.info(" Generate Unknown report");
@@ -191,6 +208,14 @@ public class CmdReport extends Command {
                 reportReq = Reports.COMPLETE;
                 i++;
                 j = 1;
+                break;
+                // report on keywords
+            case "-keyword":
+                reportReq = Reports.KEYWORD;
+                i++;
+                keywords.add(args[i]);
+                i++;
+                j = 2;
                 break;
             // report of all items abandoned
             case "-abandoned":

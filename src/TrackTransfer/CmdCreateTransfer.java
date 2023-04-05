@@ -70,6 +70,8 @@ public class CmdCreateTransfer extends Command {
         TblEvent.createTable();
         TblInstanceEvent.createTable();
         TblItem.createTable();
+        TblKeyword.createTable();
+        TblItemKeyword.createTable();
 
         key = TblTransfer.add(desc);
         disconnectDB();
