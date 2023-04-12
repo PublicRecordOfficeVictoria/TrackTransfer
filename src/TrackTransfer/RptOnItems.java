@@ -11,13 +11,15 @@ import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Generate a custody accepted report. This lists all items that have the status
- * 'custody-accepted'.
+ * Report on all Items that satisfy a particular criteria. The criteria are:
+ * State (Processing, Custody-accepted, Abandoned), or whether a particular
+ * keyword is set.
  *
- * @author Andrew
+ * @author Andrew Waugh
  */
 public class RptOnItems extends Report {
 
@@ -58,7 +60,7 @@ public class RptOnItems extends Report {
             // write a heartbeat on stdout to show how far we've come
             i++;
             if (i % 100 == 0) {
-                System.out.println(i);
+                LOG.log(Level.INFO, "Processed: {0}", i);
             }
 
             // write current item (if separating out items)

@@ -12,37 +12,66 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * This command generates a report on the items in a transfer
+ * This command generates a Report on the Items in a Transfer. Currently five
+ * reports are available:
+ * 1) A full report of all received Items, Instances, and Events
+ * 2) A report listing all Items that have specific Keywords set
+ * 3) A report listing all Items for which custody has been accepted
+ * 4) A report listing all Items that have been abandoned
+ * 5) A report listing all Items for which processing is incomplete
+ * 
+ * The reports can be generated as human readable text, or a CSV/TSV file. The
+ * format is automatically selected depending on the requested file extension
+ * (.txt = human readable text, .csv = CSV, .tsv = TSV
  *
- * @author Andrew
+ * @author Andrew Waugh
  */
 public class CmdReport extends Command {
-
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdAnnotate");
-    private Path outputFile;        // report file
-    private Reports reportReq;      // report requested
-    private ArrayList<String> keywords;      // keywords requested
-    private Report.ReportType format;      // format of requested report
+    private Path outputFile;      // report file
+    private ReportType type;          // report requested
+    private ArrayList<String> keywords; // keywords requested
     private final String usage = "[-db <databaseURL>] -o <file> [-v] [-d] [-help]";
 
     public CmdReport() throws AppFatal {
         super();
     }
 
-    private enum Reports {
+    /**
+     * List of Reports available
+     */
+    public enum ReportType {
         COMPLETE,       // all items and instances
         KEYWORD,        // all items with specific keyword set
         CUSTODY_ACCEPTED, // all items for which custody has been accepted
         ABANDONED,      // all items which have been abandoned
         INCOMPLETE      // all items for which processing is incomplete
     }
+    
+    /**
+     * Generate a report.
+     * 
+     * @param database database to connect to (may be null)
+     * @param type the type of report to generate
+     * @param keywords keywords to report on
+     * @param format the required output format
+     * @param outputFile where to put the generated report
+     * @throws AppFatal an internal error occurred
+     * @throws AppError an external (user) error occurred
+     * @throws SQLException an SQL error occurred
+     */
+    public void generateReport(String database, ReportType type, ArrayList<String> keywords,  Path outputFile) throws AppFatal, AppError, SQLException {
+        this.database = database;
+        this.type = type;
+        this.keywords = keywords;
+        this.outputFile = outputFile;
+        
+        testParameters();
+        doIt();
+    }
 
-    public void doIt(String args[]) throws AppFatal, AppError, SQLException {
-        Report report;
-        String[] s;
-
-        reportReq = Reports.COMPLETE;
-        format = Report.ReportType.TEXT;
+    public void generateReport(String args[]) throws AppFatal, AppError, SQLException {
+        type = ReportType.COMPLETE;
         keywords = new ArrayList<>();
 
         config(args, usage);
@@ -70,13 +99,11 @@ public class CmdReport extends Command {
         }
 
         // check necessary fields have been specified
-        if (outputFile == null) {
-            throw new AppFatal("Output file is not specified (-o)");
-        }
+        testParameters();
 
         // say what we are doing
         LOG.info("Requested:");
-        switch (reportReq) {
+        switch (type) {
             case COMPLETE:
                 LOG.info(" Generate Complete report");
                 break;
@@ -98,21 +125,14 @@ public class CmdReport extends Command {
         }
         LOG.log(Level.INFO, " Database: {0}", database == null ? "Derived from .mv.db filename" : database);
         LOG.log(Level.INFO, " Report: {0}", outputFile.toString());
-        switch (format) {
-            case TEXT:
-                LOG.info(" Report format: plain text");
-                break;
-            case CSV:
-                LOG.info(" Report format: CSV");
-                break;
-            case TSV:
-                LOG.info(" Report format: TSV");
-                break;
-            default:
-                LOG.info(" Report format: unknown");
-                break;
-        }
         genericStatus();
+        
+        doIt();
+        
+    }
+    
+    private void doIt() throws AppFatal, AppError, SQLException {
+        Report report;
 
         // open the output file for writing
         try {
@@ -129,7 +149,7 @@ public class CmdReport extends Command {
             //System.out.println(TblInstance.printTable());
             //System.out.println(TblInstanceEvent.printTable());
             //System.out.println(TblEvent.printTable());
-            switch (reportReq) {
+            switch (type) {
                 case COMPLETE:
                     report = new RptComplete();
                     ((RptComplete) report).generate(outputFile);
@@ -140,21 +160,24 @@ public class CmdReport extends Command {
                     break;
                 case CUSTODY_ACCEPTED:
                     report = new RptOnItems();
+                    keywords.clear();
                     keywords.add("Custody-accepted");
                     ((RptOnItems) report).generate(outputFile, "with status Custody Accepted", keywords, "FILENAME");
                     break;
                 case ABANDONED:
                     report = new RptOnItems();
+                    keywords.clear();
                     keywords.add("Abandoned");
                     ((RptOnItems) report).generate(outputFile, "with status Abandoned", keywords, "FILENAME");
                     break;
                 case INCOMPLETE:
                     report = new RptOnItems();
+                    keywords.clear();
                     keywords.add("Incomplete");
                     ((RptOnItems) report).generate(outputFile, "for which processing is incomplete", keywords, "FILENAME");
                     break;
                 default:
-                    LOG.info(" Generate Unknown report");
+                    LOG.info(" Requested to generate an unknown type of report");
                     break;
             }
 
@@ -191,27 +214,15 @@ public class CmdReport extends Command {
                 i++;
                 j = 2;
                 break;
-            // TSV report requested
-            case "-tsv":
-                i++;
-                format = Report.ReportType.TSV;
-                j = 1;
-                break;
-            // CSV report requested
-            case "-csv":
-                i++;
-                format = Report.ReportType.CSV;
-                j = 1;
-                break;
             // complete report of all items/instances/events
             case "-complete":
-                reportReq = Reports.COMPLETE;
+                type = ReportType.COMPLETE;
                 i++;
                 j = 1;
                 break;
                 // report on keywords
             case "-keyword":
-                reportReq = Reports.KEYWORD;
+                type = ReportType.KEYWORD;
                 i++;
                 keywords.add(args[i]);
                 i++;
@@ -219,19 +230,19 @@ public class CmdReport extends Command {
                 break;
             // report of all items abandoned
             case "-abandoned":
-                reportReq = Reports.ABANDONED;
+                type = ReportType.ABANDONED;
                 i++;
                 j = 1;
                 break;
             // report of all items for which custody was accepted
             case "-custody-accepted":
-                reportReq = Reports.CUSTODY_ACCEPTED;
+                type = ReportType.CUSTODY_ACCEPTED;
                 i++;
                 j = 1;
                 break;
             // complete report of all items that are incomplete
             case "-incomplete":
-                reportReq = Reports.INCOMPLETE;
+                type = ReportType.INCOMPLETE;
                 i++;
                 j = 1;
                 break;
@@ -240,5 +251,14 @@ public class CmdReport extends Command {
                 j = 0;
         }
         return j;
+    }
+    
+    private void testParameters() throws AppFatal, AppError {
+        if (outputFile == null) {
+            throw new AppError("Output file is not specified (-o)");
+        }
+        if (type == ReportType.KEYWORD && keywords == null) {
+            throw new AppError("No keywords specified (-keyword)");
+        }
     }
 }

@@ -10,12 +10,14 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * This generates a
+ * This generates a complete report of all Items in a Transfer. All Instances
+ * and Events relating to each Item are listed. The Items are sorted by name.
  *
- * @author Andrew
+ * @author Andrew Waugh
  */
 public class RptComplete extends Report {
 
@@ -36,7 +38,6 @@ public class RptComplete extends Report {
     public void generate(Path output) throws SQLException, IOException, AppError {
         int itemKey, instanceKey;
         ResultSet items, keywords, instances, events;
-        String state;
         int i;
 
         open(output);
@@ -49,10 +50,10 @@ public class RptComplete extends Report {
         items = TblItem.query("*", null, "FILENAME");
         while (items.next()) {
 
-            // write a heartbeat on stdout to show how far we've come
+            // write a heartbeat on stdout to show the progress
             i++;
             if (i % 100 == 0) {
-                System.out.println(i);
+                LOG.log(Level.INFO, "Processed: {0}", i);
             }
 
             // write current item (if separating out items)
@@ -77,7 +78,6 @@ public class RptComplete extends Report {
                 }
             }
         }
-
         close();
     }
 

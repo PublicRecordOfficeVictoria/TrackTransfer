@@ -7,8 +7,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- *
- * @author Andrew
+ * Create a new Transfer. This must be the first command as it creates the
+ * empty database. You can't create more than one Transfer in the database.
+ * 
+ * @author Andrew Waugh
  */
 public class CmdCreateTransfer extends Command {
 
@@ -19,8 +21,39 @@ public class CmdCreateTransfer extends Command {
     public CmdCreateTransfer() throws AppFatal {
         super();
     }
-
-    public void doIt(String args[]) throws AppFatal, AppError, SQLException {
+    
+    /**
+     * Create a new transfer. API version. This method is called once to create
+     * the databases and start a transfer. The description describes the
+     * transfer.
+     * 
+     * Do not call this method directly, use the wrapper in the TrackTransfer
+     * class.
+     * 
+     * @param database the string representing the database to create (cannot be null)
+     * @param description a description of this transfer (e.g. an ID)
+     * @throws AppFatal thrown if TrackTransfer had an internal error
+     * @throws AppError thrown if the calling program did something wrong
+     * @throws SQLException SQL problem occurred
+     */
+    public void createTransfer(String database, String description) throws AppFatal, AppError, SQLException {
+        assert database != null;
+        assert description != null;
+        
+        this.database = database;
+        this.desc = description;
+        doIt();
+    }
+    
+    /**
+     * Create a new transfer. Command line version.
+     * 
+     * @param args
+     * @throws AppFatal thrown if TrackTransfer had an internal error
+     * @throws AppError thrown if the calling program did something wrong
+     * @throws SQLException SQL problem occurred
+     */
+    public void createTransfer(String args[]) throws AppFatal, AppError, SQLException {
         int key;
 
         LOG.setLevel(null);
@@ -54,7 +87,24 @@ public class CmdCreateTransfer extends Command {
         LOG.log(Level.INFO, " Database: {0}", database);
         LOG.log(Level.INFO, " Description: {0}", desc);
         genericStatus();
+        
+        key = doIt();
 
+        // acknowledge creation
+        LOG.log(Level.INFO, " Database created ({0})", database);
+        LOG.log(Level.INFO, " Transfer (key={0})", key);
+    }
+
+    /**
+     * Internal function that actually does the work.
+     * 
+     * @throws AppFatal
+     * @throws AppError
+     * @throws SQLException 
+     */
+    private int doIt() throws AppFatal, AppError, SQLException {
+        int key;
+        
         // connect to the database and create the tables
         connectDB();
         try {
@@ -75,10 +125,8 @@ public class CmdCreateTransfer extends Command {
 
         key = TblTransfer.add(desc);
         disconnectDB();
-
-        // acknowledge creation
-        LOG.log(Level.INFO, " Database created ({0})", database);
-        LOG.log(Level.INFO, " Transfer (key={0})", key);
+        
+        return key;
     }
 
     /**

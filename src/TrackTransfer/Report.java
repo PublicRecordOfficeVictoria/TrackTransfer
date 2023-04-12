@@ -17,20 +17,21 @@ import java.time.format.DateTimeFormatter;
 import java.util.logging.Logger;
 
 /**
- *
- * @author Andrew
+ * Utility routines for generating reports.
+ * 
+ * @author Andrew Waugh
  */
 public abstract class Report {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.Report");
     private FileOutputStream fos;
     private OutputStreamWriter osw;
     protected BufferedWriter w;
-    protected ReportType format; // type of report to generate (based on file name)
+    protected ReportFormat format; // type of report to generate (based on file name)
 
     /**
      * Types of reports that can be generated
      */
-    public enum ReportType {
+    public enum ReportFormat {
         TEXT,       // report in plain text (default)
         CSV,        // report as CSV file
         TSV,        // report as TSV file
@@ -50,15 +51,14 @@ public abstract class Report {
         filename = output.getFileName().toString().toLowerCase();
         System.out.println("File: '"+filename+"'");
         if (filename.endsWith(".txt")) {
-            format = ReportType.TEXT;
+            format = ReportFormat.TEXT;
         } else if (filename.endsWith(".csv")) {
-            format = ReportType.CSV;
+            format = ReportFormat.CSV;
         } else if (filename.endsWith(".tsv")) {
-            format = ReportType.TSV;
+            format = ReportFormat.TSV;
         } else {
             throw new AppError("Report file name does not end with '.txt', '.tsv', or '.csv'");
         }
-        System.out.println("Format: "+format);
         
         fos = new FileOutputStream(output.toFile());
         osw = new OutputStreamWriter(fos, "UTF-8");
@@ -102,7 +102,7 @@ public abstract class Report {
         int i;
 
         for (i = 0; i < args.length; i++) {
-            if (format == ReportType.CSV) {
+            if (format == ReportFormat.CSV) {
                 encode2CSV(args[i]);
             } else {
                 encode2TSV(args[i]);
@@ -152,7 +152,7 @@ public abstract class Report {
      * Return the correct tsvCSVSeparator for a TSV or CSV file
      */
     protected void tsvCSVSeparator() throws IOException {
-        if (format == ReportType.CSV) {
+        if (format == ReportFormat.CSV) {
             w.write(",");
         } else {
             w.write("\t");

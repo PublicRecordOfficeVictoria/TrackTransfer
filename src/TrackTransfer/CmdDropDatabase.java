@@ -7,20 +7,46 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- *
- * @author Andrew
+ * Drops the database and all the data contained in it. This is primarily
+ * intended for testing.
+ * 
+ * @author Andrew Waugh
  */
 public class CmdDropDatabase extends Command {
     private final static Logger LOG = Logger.getLogger("TrackTransfer.CmdDropDatabase");
-    private final String usage;
+    private final String usage = "-db <database> [-v] [-d] [-help]";
 
     public CmdDropDatabase() throws AppFatal {
         super();
-        usage = "-db <database> [-v] [-d] [-help]";
     }
-
-    public void doIt(String args[]) throws AppFatal, AppError, SQLException {
-        
+    
+    /**
+     * Drop the database deleting any data in it. API version. The database has
+     * to be explicitly specified to prevent accidents.
+     * 
+     * Do not call this method directly, use the wrapper in the TrackTransfer
+     * class.
+     * 
+     * @param database the string representing the database to connect to
+     * @throws AppFatal thrown if TrackTransfer had an internal error
+     * @throws AppError thrown if the calling program did something wrong
+     * @throws SQLException SQL problem occurred
+     */
+    public void dropDatabase(String database) throws AppFatal, AppError, SQLException {
+        assert database != null;
+        this.database = database;
+        doIt();
+    }
+    
+    /**
+     * Drop the database, deleting any data in it. Command line version.
+     * 
+     * @param args
+     * @throws AppFatal thrown if TrackTransfer had an internal error
+     * @throws AppError thrown if the calling program did something wrong
+     * @throws SQLException SQL problem occurred
+     */
+    public void dropDatabase (String args[]) throws AppFatal, AppError, SQLException {
         config(args, usage);
 
         // just asked for help?
@@ -45,7 +71,22 @@ public class CmdDropDatabase extends Command {
         LOG.info(" Drop database");
         LOG.log(Level.INFO, " Database: {0}", database);
         genericStatus();
+        
+        doIt();
 
+        // acknowledge creation
+        LOG.log(Level.INFO, " Database dropped ({0})", database);
+    }
+    
+    /**
+     * Internal function that actually does the work.
+     * 
+     * @throws AppFatal
+     * @throws AppError
+     * @throws SQLException 
+     */
+    private void doIt() throws AppFatal, AppError, SQLException {
+        
         // connect to the database and drop the tables
         connectDB();
         TblItemKeyword.dropTable();
@@ -57,9 +98,6 @@ public class CmdDropDatabase extends Command {
         TblDelivery.dropTable();
         TblTransfer.dropTable();
         disconnectDB();
-
-        // acknowledge creation
-        LOG.log(Level.INFO, " Database dropped ({0})", database);
     }
     
     /**

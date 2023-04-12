@@ -14,8 +14,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- *
- * @author Andrew
+ * Create a new Delivery within the Transfer. Multiple deliveries can be added
+ * to a transfer; they represent tranches of Items received.
+ * 
+ * @author Andrew Waugh
  */
 public class CmdNewDelivery extends Command {
 
@@ -42,21 +44,47 @@ public class CmdNewDelivery extends Command {
     public CmdNewDelivery() throws AppFatal {
         super();
     }
-
-    public void doIt(String args[]) throws AppFatal, AppError, SQLException {
-        int transferKey, deliveryKey, deliveryEvent;
-        ResultSet rs;
-
-        noFiles = 0;
-        numNotRecords = 0;
-        numRecords = 0;
-        supersedePrevious = true;
-        receivedEvent = 0;
-        newRecordEvent = 0;
-        supersededEvent = 0;
-        replacedByDuplNewDeliveryEvent = 0;
-        notRecordEvent = 0;
-        tooLateEvent = 0;
+    
+    /**
+     * Add a new delivery. API version. Description and rootDir are mandatory.
+     * Database is optional; if null the database in the current working
+     * directory is used.
+     * 
+     * Do not call this method directly, use the wrapper in the TrackTransfer
+     * class.
+     * 
+     * @param database the string representing the database
+     * @param description a description of this delivery (e.g. an ID)
+     * @param rootDir the root of the tree of items in the delivery
+     * @param veoOnly true if only files ending in .veo or .veo.zip are to be processed
+     * @param supersedePrevious true if any duplicates will supersede any previous instances
+     * @throws AppFatal thrown if TrackTransfer had an internal error
+     * @throws AppError thrown if the calling program did something wrong
+     * @throws SQLException SQL problem occurred
+     */
+    public void newDelivery(String database, String description, Path rootDir, boolean veoOnly, boolean supersedePrevious) throws AppFatal, AppError, SQLException {
+        assert description != null;
+        assert rootDir != null;
+        
+        this.database = database;
+        this.desc = description;
+        this.rootDir = rootDir;
+        this.veo = veoOnly;
+        this.supersedePrevious = supersedePrevious;
+        
+        doIt();
+    }
+    
+    /**
+     * Add a new delivery. Command line version.
+     * 
+     * @param args
+     * @throws AppFatal thrown if TrackTransfer had an internal error
+     * @throws AppError thrown if the calling program did something wrong
+     * @throws SQLException SQL problem occurred
+     */
+    public void newDelivery(String args[]) throws AppFatal, AppError, SQLException {
+        int key;
 
         config(args, usage);
 
@@ -110,6 +138,36 @@ public class CmdNewDelivery extends Command {
         if (!rootDir.toFile().isDirectory()) {
             throw new AppError("New Delivery: directory '" + rootDir.toString() + "' is not a directory");
         }
+        
+        key = doIt();
+
+        // acknowledge creation
+        LOG.log(Level.INFO, " Delivery added to ''{0}''; found: {1} (records: {2}, not records: {3})", new Object[]{database, noFiles, numRecords, numNotRecords});
+        LOG.log(Level.INFO, " Delivery row (key={0})", key);
+    }
+    
+    
+    /**
+     * Internal function that actually does the work.
+     * 
+     * @throws AppFatal
+     * @throws AppError
+     * @throws SQLException 
+     */
+    private int doIt() throws AppFatal, AppError, SQLException {
+        int transferKey, deliveryKey, deliveryEvent;
+        ResultSet rs;
+        
+        noFiles = 0;
+        numNotRecords = 0;
+        numRecords = 0;
+        supersedePrevious = true;
+        receivedEvent = 0;
+        newRecordEvent = 0;
+        supersededEvent = 0;
+        replacedByDuplNewDeliveryEvent = 0;
+        notRecordEvent = 0;
+        tooLateEvent = 0;
 
         // connect to the database and create the tables
         database = connectDB();
@@ -131,10 +189,8 @@ public class CmdNewDelivery extends Command {
         registerInstances(deliveryKey, desc, rootDir, deliveryEvent);
 
         disconnectDB();
-
-        // acknowledge creation
-        LOG.log(Level.INFO, " Delivery added to ''{0}''; found: {1} (records: {2}, not records: {3})", new Object[]{database, noFiles, numRecords, numNotRecords});
-        LOG.log(Level.INFO, " Delivery row (key={0})", deliveryKey);
+        
+        return deliveryKey;
     }
     
     /**
